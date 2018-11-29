@@ -1,0 +1,21 @@
+# Ignore backup files
+*~
+# Ignore vim swap files.
+.*.swp
+# Ignore bazel generated files
+/bazel-*
+bazel-*
+.bazelrc
+.idea
+# Ignore prototypes folder
+/prototypes
+# Byte-compiled / optimized / DLL files
+__pycache__/
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
