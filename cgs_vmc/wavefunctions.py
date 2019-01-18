@@ -363,6 +363,8 @@ class FullyConnectedNetwork(Wavefunction):
     fcnn_params = {
         'num_layers': hparams.num_fc_layers,
         'layer_size': hparams.fc_layer_size,
+        'output_activation': layers.NONLINEARITIES[hparams.output_activation],
+        'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
     }
     if name:
       fcnn_params['name'] = name
@@ -429,6 +431,7 @@ class RestrictedBoltzmannNetwork(Wavefunction):
     rbm_params = {
         'num_layers': hparams.num_fc_layers,
         'layer_size': hparams.fc_layer_size,
+        'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
     }
     if name:
       rbm_params['name'] = name
@@ -503,6 +506,8 @@ class Conv1DNetwork(Wavefunction):
         'num_layers': hparams.num_conv_layers,
         'num_filters': hparams.num_conv_filters,
         'kernel_size': hparams.kernel_size,
+        'output_activation': layers.NONLINEARITIES[hparams.output_activation],
+        'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
     }
     if name:
       conv_1d_params['name'] = name
@@ -588,6 +593,8 @@ class Conv2DNetwork(Wavefunction):
         'kernel_size': hparams.kernel_size,
         'size_x': hparams.size_x,
         'size_y': hparams.size_y,
+        'output_activation': layers.NONLINEARITIES[hparams.output_activation],
+        'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
     }
     if name:
       conv_2d_params['name'] = name
@@ -679,6 +686,7 @@ class ResNet1D(Wavefunction):
         'num_filters': hparams.num_conv_filters,
         'kernel_size': hparams.kernel_size,
         'conv_stride': hparams.conv_strides,
+        'output_activation': layers.NONLINEARITIES[hparams.output_activation],
     }
     if name:
       res_net_1d_params['name'] = name
@@ -779,6 +787,7 @@ class ResNet2D(Wavefunction):
         'conv_stride': hparams.conv_strides,
         'size_x': hparams.size_x,
         'size_y': hparams.size_y,
+        'output_activation': layers.NONLINEARITIES[hparams.output_activation],
     }
     if name:
       res_net_2d_params['name'] = name
