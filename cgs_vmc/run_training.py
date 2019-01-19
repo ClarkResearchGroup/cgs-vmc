@@ -38,10 +38,13 @@ flags.DEFINE_boolean(
 
 flags.DEFINE_string(
     'wavefunction_type', 'fully_connected',
-    'Network architecture to train.')
+    'Network architecture to train. Available architectures are listed in '
+    'wavefunctions.WAVEFUNCTION_TYPES dict. and '
+    'wavefunctions.build_wavefunction() function.')
 flags.DEFINE_string(
     'optimizer', 'ITSWO',
-    'Ground state optimizer to use.')
+    'Ground state optimizer to use. Available options listed in '
+    'training.GROUND_STATE_OPTIMIZERS dict.')
 
 flags.DEFINE_string(
     'list_of_evaluators', '',
