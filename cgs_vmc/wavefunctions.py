@@ -1012,7 +1012,6 @@ def build_wavefunction(
     rbm_2 = WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams, 'rbm_2')
     return rbm_1 + rbm_2
 
-
   if hparams.wavefunction_type == 'fc_diff':
     fcnn_1 = WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams, 'fc_1')
     fcnn_2 = WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams, 'fc_2')
