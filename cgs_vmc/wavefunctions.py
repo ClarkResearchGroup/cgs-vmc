@@ -1012,6 +1012,17 @@ def build_wavefunction(
     rbm_2 = WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams, 'rbm_2')
     return rbm_1 + rbm_2
 
+
+  if hparams.wavefunction_type == 'fc_diff':
+    fcnn_1 = WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams, 'fc_1')
+    fcnn_2 = WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams, 'fc_2')
+    return fcnn_1 - fcnn_2
+
+  if hparams.wavefunction_type == 'rbm_diff':
+    rbm_1 = WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams, 'rbm_1')
+    rbm_2 = WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams, 'rbm_2')
+    return rbm_1 - rbm_2
+
   raise ValueError('Provided wavefunction_type is not registered.')
 
 
