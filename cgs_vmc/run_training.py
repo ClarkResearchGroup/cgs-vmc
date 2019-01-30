@@ -130,7 +130,7 @@ def main(argv):
   session.run([init, init_l])
 
   checkpoint_saver = tf.train.Saver(
-      wavefunction.get_trainable_variables(), max_to_keep=50)
+      wavefunction.get_trainable_variables(), max_to_keep=5)
 
   if FLAGS.resume_training:
     latest_checkpoint = tf.train.latest_checkpoint(hparams.checkpoint_dir)
