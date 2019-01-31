@@ -121,17 +121,20 @@ class Wavefunction(snt.AbstractModule):
         """Creates an WavefunctionSum module."""
         self._wf_a = wf_a
         self._wf_b = wf_b
+        components = [self._wf_a]
         if isinstance(self._wf_b, Wavefunction):
           # pylint: disable=protected-access
           name = '_times_'.join([wf_b._unique_name, wf_a._unique_name])
+          components += [self._wf_b]
         elif isinstance(self._wf_b, tf.Tensor):
           # pylint: disable=protected-access
           name = '_times_'.join([wf_b.name.rstrip(':0'), wf_a._unique_name])
         elif isinstance(self._wf_b, float):
+          factor_name = str(wf_b).replace('-', 'neg_')
           # pylint: disable=protected-access
-          name = '_times_'.join([str(wf_b), wf_a._unique_name])
+          name = '_times_'.join([factor_name, wf_a._unique_name])
         super(ProductOfWavefunctions, self).__init__(name=name)
-        self._sub_wavefunctions += [self._wf_a, self._wf_b]
+        self._sub_wavefunctions += components
 
       def _build(self, inputs: tf.Tensor) -> tf.Tensor:
         """Builds computational graph evaluating the wavefunction on inputs.
