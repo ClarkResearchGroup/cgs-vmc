@@ -10,6 +10,7 @@ import inspect
 
 from typing import Dict, List, Any
 
+import os
 import numpy as np
 import tensorflow as tf
 import sonnet as snt
@@ -863,6 +864,7 @@ class MatrixProductState(Wavefunction):
 
 class ProjectedBDG(Wavefunction):
   """P-BDG module."""
+
   def __init__(
       self,
       num_sites: int,
@@ -915,7 +917,7 @@ class ProjectedBDG(Wavefunction):
 
 
 class FullyConnectedNNB(Wavefunction):
-  """ BCS neural network backflow module."""
+  """BCS neural network backflow module."""
 
   def __init__(
       self,
@@ -945,7 +947,7 @@ class FullyConnectedNNB(Wavefunction):
       self._components += [snt.Linear(output_size=num_sites * num_sites)]
 
   def _build(self, inputs: tf.Tensor) -> tf.Tensor:
-    """Connects the ProjectedBDG module into the graph with input `inputs`.
+    """Connects the FC-NNB module into the graph with input `inputs`.
 
     Args:
       inputs: Tensor with input values of shape=[batch] and values +/- 1.
@@ -982,6 +984,88 @@ class FullyConnectedNNB(Wavefunction):
     if name:
       fcnnb_params['name'] = name
     return cls(**fcnnb_params)
+
+
+class FullVector(Wavefunction):
+  """Implementation of a wavefunction as ED vector in fixed Sz sector."""
+
+  def __init__(
+      self,
+      num_sites: int,
+      top_lin_table: np.array,
+      bot_lin_table: np.array,
+      initial_vector: np.array,
+      name: str = 'full_vector'):
+    """Constructs a full ED-like vector module.
+
+    Args:
+      num_sites: Number of sites in the system.
+      top_lin_table: Higher bits index table, see "Lin, H. Q. 1990."
+      bot_lin_table: Lower bits index table.
+      initial_vector: Initial values of the psi vector.
+      name: Name of the module.
+    """
+    super(FullVector, self).__init__(name=name)
+    self._num_sites = num_sites
+    self._top_lin_table = top_lin_table
+    self._bot_lin_table = bot_lin_table
+    self._initial_vector = initial_vector
+    self._lin_mask = np.array(
+        [2 ** (i) for i in range(0, num_sites // 2)],
+        dtype=int,
+    )
+    with self._enter_variable_scope():
+      self._ed_vector = tf.get_variable(
+          name='ed_vector',
+          initializer=initial_vector,
+          trainable=True,
+      )
+
+  def _build(self, inputs: tf.Tensor) -> tf.Tensor:
+    """Connects the FullVector module into the graph with input `inputs`.
+
+    Args:
+      inputs: Tensor with input values of shape=[batch] and values +/- 1.
+
+    Returns:
+      Wave-function amplitudes of shape=[batch].
+    """
+    n_sites = self._num_sites
+    top_bits = tf.cast(inputs[:, (n_sites // 2):], tf.int32)
+    bot_bits = tf.cast(inputs[:, :(n_sites // 2)], tf.int32)
+
+    top_indices = tf.reduce_sum(tf.nn.relu(top_bits) * self._lin_mask, axis=1)
+    bot_indices = tf.reduce_sum(tf.nn.relu(bot_bits) * self._lin_mask, axis=1)
+    top_lin_indices = tf.gather(self._top_lin_table, top_indices)
+    bot_lin_indices = tf.gather(self._bot_lin_table, bot_indices)
+
+    ed_indices = top_lin_indices + bot_lin_indices
+    return tf.gather(self._ed_vector, ed_indices)
+
+  @classmethod
+  def from_hparams(
+      cls,
+      hparams: tf.contrib.training.HParams,
+      name: str = ''
+  ) -> 'Wavefunction':
+    """Constructs an instance of a class from hparams."""
+    dir_path = hparams.checkpoint_dir
+    top_lin_table_path = os.path.join(dir_path, hparams.top_lin_table_file)
+    bot_lin_table_path = os.path.join(dir_path, hparams.bot_lin_table_file)
+    ed_vector_path = os.path.join(dir_path, hparams.ed_vector_file)
+    top_lin_table = np.genfromtxt(top_lin_table_path, dtype=np.int32)
+    bot_lin_table = np.genfromtxt(bot_lin_table_path, dtype=np.int32)
+    ed_vector = np.genfromtxt(ed_vector_path, dtype=np.float32)
+
+    full_vector_params = {
+        'num_sites': hparams.num_sites,
+        'top_lin_table': top_lin_table,
+        'bot_lin_table': bot_lin_table,
+        'initial_vector': ed_vector,
+    }
+    if name:
+      full_vector_params['name'] = name
+    return cls(**full_vector_params)
 
 
 def build_wavefunction(
@@ -1042,4 +1126,5 @@ WAVEFUNCTION_TYPES = {
     'fully_connected_nnb': FullyConnectedNNB,
     'res_net_1d': ResNet1D,
     'res_net_2d': ResNet2D,
+    'ed_vector': FullVector,
 }

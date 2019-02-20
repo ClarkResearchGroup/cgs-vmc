@@ -253,15 +253,15 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
     local_energy = hamiltonian.local_value(wavefunction, configs, psi)
     local_energy = tf.stop_gradient(local_energy)
 
-    log_psi_grads = tf.gradients(psi / psi_no_grad, opt_v)
-    e_local_psi_grads = tf.gradients(psi / psi_no_grad * local_energy, opt_v)
+    log_psi_raw_grads = tf.gradients(psi / psi_no_grad, opt_v)
+    log_psi_grads = [tf.convert_to_tensor(grad) for grad in log_psi_raw_grads]
+    e_psi_raw_grads = tf.gradients(psi / psi_no_grad * local_energy, opt_v)
+    e_psi_grads = [tf.convert_to_tensor(grad) for grad in e_psi_raw_grads]
 
     grads = [
         tf.metrics.mean_tensor(log_psi_grad) for log_psi_grad in log_psi_grads
     ]
-    weighted_grads = [
-        tf.metrics.mean_tensor(grad) for grad in e_local_psi_grads
-    ]
+    weighted_grads = [tf.metrics.mean_tensor(grad) for grad in e_psi_grads]
 
     mean_energy, update_energy = tf.metrics.mean(local_energy)
     mean_pure_grads, update_pure_grads = list(map(list, zip(*grads)))
@@ -380,8 +380,13 @@ class LogOverlapImaginaryTimeSWO(WavefunctionOptimizer):
     psi_no_grad = tf.stop_gradient(psi)
 
     ratio = tf.stop_gradient(ite_psi_omega / psi)
-    log_psi_grads = tf.gradients(psi / psi_no_grad, opt_v)
-    ratio_log_psi_grads = tf.gradients(ratio * psi / psi_no_grad, opt_v)
+
+    log_psi_raw_grads = tf.gradients(psi / psi_no_grad, opt_v)
+    log_psi_grads = [tf.convert_to_tensor(grad) for grad in log_psi_raw_grads]
+    ratio_log_psi_raw_grads = tf.gradients(ratio * psi / psi_no_grad, opt_v)
+    ratio_log_psi_grads = [
+        tf.convert_to_tensor(grad) for grad in ratio_log_psi_raw_grads
+    ]
 
     log_grads = [
         tf.metrics.mean_tensor(log_psi_grad) for log_psi_grad in log_psi_grads

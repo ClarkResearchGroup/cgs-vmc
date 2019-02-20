@@ -28,7 +28,7 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
     size_y: Dimension along y direction (used for reshaping for conv2d).
     size_z: Dimension along z direction (currently not used).
 
-  Layer parameters (only used if present in the model):
+  Model parameters (only used if present in the model):
     num_fc_layers: Number of fully connected layers.
     fc_layer_size: Number of neurons per layer.
 
@@ -38,6 +38,12 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
     num_conv_filters: Number of convolutional filters.
 
     num_resnet_blocks: Number of Residual blocks (Deep residual networks paper).
+
+    top_lin_table_file: Name of file that stores Lin top bits lookup table that
+        allows quick index retrieval. See Lin H.Q 1990.
+    bot_lin_table_file: Name of file that stores Lin bot bits lookup table.
+    ed_vector_file: Name of the file that stores all wavefunction amplitudes.
+
 
     nonlinearity: Nonlinearity to use for hidden activations.
     output_activation: Nonlinearity to use for the output (if included).
@@ -95,6 +101,11 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
 
       # MPS parameters
       bond_dimension=4,
+
+      # ED state parameters
+      top_lin_table_file='',
+      bot_lin_table_file='',
+      ed_vector_file='',
 
       nonlinearity='relu',
       output_activation='exp',
