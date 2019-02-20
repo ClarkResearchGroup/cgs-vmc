@@ -96,6 +96,11 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
       # MPS parameters
       bond_dimension=4,
 
+      # ED state parameters
+      top_lin_table_file='',
+      bot_lin_table_file='',
+      ed_vector_file='',
+
       nonlinearity='relu',
       output_activation='exp',
 
