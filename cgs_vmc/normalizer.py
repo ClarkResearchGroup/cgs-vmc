@@ -41,6 +41,8 @@ def normalize_wavefunction(
   set_norm_on_batch = wavefunction.normalize_batch(psi_value, value)
   update_norm_on_batch = wavefunction.update_norm(psi_value, value)
 
+  if not set_norm_on_batch:
+    return
   session.run(set_norm_on_batch)
   for _ in range(normalization_iterations):
     session.run(update_config)

@@ -173,6 +173,8 @@ class SupervisedWavefunctionOptimizer():
     opt_v = wavefunction.get_trainable_variables()
     optimizer = create_sgd_optimizer(hparams)
     train_step = optimizer.minimize(loss, var_list=opt_v)
+    num_epochs = graph_builders.get_or_create_num_epochs()
+    epoch_increment = tf.assign_add(num_epochs, 1)
 
     train_ops = TrainOpsSupervised(
         accumulate_gradients=None,
@@ -180,7 +182,9 @@ class SupervisedWavefunctionOptimizer():
         reset_gradients=None,
         mc_step=mc_step,
         acc_rate=acc_rate,
-        metrics=loss
+        metrics=loss,
+        update_wf_norm=None,
+        epoch_increment=epoch_increment,
     )
     return train_ops
 
@@ -209,7 +213,7 @@ class SupervisedWavefunctionOptimizer():
     for _ in range(hparams.num_batches_per_epoch):
       for _ in range(hparams.num_monte_carlo_sweeps * hparams.num_sites):
         session.run(train_ops.mc_step)
-      _, loss = session.run([train_ops.apply_gradients, train_ops.loss])
+      _, loss = session.run([train_ops.apply_gradients, train_ops.metrics])
       loss_values.append(loss)
     return loss_values
 
@@ -319,7 +323,8 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
     for _ in range(hparams.num_equilibration_sweeps * hparams.num_sites):
       session.run(train_ops.mc_step)
 
-    session.run(train_ops.update_wf_norm)
+    if train_ops.update_wf_norm is not None:
+      session.run(train_ops.update_wf_norm)
     session.run(train_ops.reset_gradients)
     for _ in range(hparams.num_batches_per_epoch):
       session.run(train_ops.accumulate_gradients)
@@ -602,7 +607,8 @@ class ImaginaryTimeSWO(WavefunctionOptimizer):
     for _ in range(hparams.num_equilibration_sweeps * hparams.num_sites):
       session.run(train_ops.mc_step)
 
-    session.run(train_ops.update_wf_norm)
+    if train_ops.update_wf_norm is not None:
+      session.run(train_ops.update_wf_norm)
     session.run(train_ops.update_supervisor)
 
     loss_values = []

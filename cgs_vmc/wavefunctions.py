@@ -42,9 +42,7 @@ class Wavefunction(snt.AbstractModule):
     """Creates a Wavefunction instance"""
     super(Wavefunction, self).__init__(name=name)
     self._sub_wavefunctions = []
-    with self._enter_variable_scope():
-      self.create_normalization_variable()  # TODO(kochkov92) remove after ->log
-
+    self._exp_norm_shift = None  # scale shift variable
 
   def _build(self, inputs: tf.Tensor) -> tf.Tensor:
     """Builds computational graph evaluating the wavefunction on inputs.
@@ -205,58 +203,72 @@ class Wavefunction(snt.AbstractModule):
     memo[id_self] = _copy
     return _copy
 
-  def create_normalization_variable(self, initial_value: np.float32 = -10.):
-    """Gets or creates a normalization variable to avoid overflows.
+  def add_exp_normalization(
+      self,
+      pre_exp_tensor: tf.Tensor,
+      initial_exp_norm_shift: np.float32 = -10.
+  ) -> tf.Tensor:
+    """Adds normalization constant to log of psi, prior to exponentiation.
 
-    Gets or creates a variable that is used as a shift to the wavefunction such
-    that high amplitude values don't overflow. This method will be depricated
-    once wavefunction interface is moved to log + phase output.
+    Adds a constant non-trainable shift to the `pre_exp_tensor` that can be
+    adjusted throughout training to avoid overflows. This method will be
+    depricated once wavefunction interface is moved to log + phase.
 
     Args:
-      initial_value: Value to initialize normalization with.
+      pre_exp_tensor: Tensor of shape [batch_size] to be shifted before exp.
+      initial_exp_norm_shift: Initial value of the shift.
+
+    Returns:
+      Tensor with values `pre_exp_tensor` shifted by `exp_norm_shift`.
     """
     # TODO(kochkov92) Remove when move to log(psi) + phase(psi)
-    self.norm = tf.get_variable(
-        name='norm_const',
+    self._exp_norm_shift = tf.get_variable(
+        name='exp_norm_shift',
         shape=[],
-        initializer=tf.constant_initializer(initial_value),
+        initializer=tf.constant_initializer(initial_exp_norm_shift),
         dtype=tf.float32,
         trainable=False
     )
+    return pre_exp_tensor - self._exp_norm_shift
 
   def normalize_batch(
       self,
       batch_of_amplitudes: tf.Tensor,
-      max_value: np.float32 = 1e20,
-  ) -> tf.Tensor:
-    """Builds operation that normalize wf values in batch to (0, max_value].
+      max_value: np.float32 = 1e10,
+  ) -> Any:
+    """If output_activation is tf.exp, builds operation that normalize psi.
 
     Build an operation that changes the normalization variable such that
-    batch_of_amplitudes are mapped on (0, max_value) interval. The normalization
-    variable is assumed to be placed prior to exponentiation. Note that this
-    does not guarantee that wave-function is <= max_value on all inputs. This
-    method can be overriden by other wavefunctions if needed.
+    values of batch_of_amplitudes are mapped on (0, max_value) interval.
+    If mode does not use tf.exp as output activation, returns None.
+    Note that this procedure does not guarantee that arbitrary psi(inputs)
+    is <= max_value on all inputs. This method can be overriden by other
+    wavefunctions if needed.
 
     Args:
       batch_of_amplitudes: Batch of amplitudes.
       max_value: Upper bound on batch of amplitudes.
 
     Returns:
-      Operation that updates normalization variable.
+      Operation that updates normalization or None if activation is not 'exp'.
     """
+    if self._exp_norm_shift is None:
+      return None
     max_amplitude_tensor = tf.reduce_max(batch_of_amplitudes)
     log_max = tf.log(max_amplitude_tensor)
-    return tf.assign_add(self.norm, log_max - np.log(max_value))
+    return tf.assign_add(self._exp_norm_shift, log_max - np.log(max_value))
 
   def update_norm(
       self,
       batch_of_amplitudes: tf.Tensor,
       max_value: np.float32 = 1e10,
-  ) -> tf.Tensor:
+  ) -> Any:
     """Builds operation that update wf values in batch not to exceed max_value.
 
-    In contrast to normalize_batch, this operation changes the normalization
-    only if the value of the amplitude in the batch exceeds max_value.
+    Similar to normalize batch, returns None if output_activation of the model
+    is not tf.exp. In contrast to normalize_batch, this operation changes the
+    normalization only if the value of the amplitude in the batch exceeds
+    max_value.
 
     Args:
       batch_of_amplitudes: Batch of amplitudes.
@@ -265,11 +277,13 @@ class Wavefunction(snt.AbstractModule):
     Returns:
       Operation that updates normalization variable.
     """
+    if self._exp_norm_shift is None:
+      return None
     max_log = np.log(max_value)
     max_amplitude_tensor = tf.reduce_max(batch_of_amplitudes)
     log_max = tf.log(max_amplitude_tensor)
-    update_norm = lambda: tf.assign_add(self.norm, log_max - max_log)
-    keep_norm = lambda: tf.assign_add(self.norm, 0.)
+    update_norm = lambda: tf.assign_add(self._exp_norm_shift, log_max - max_log)
+    keep_norm = lambda: tf.assign_add(self._exp_norm_shift, 0.)
     normalize = tf.cond(tf.greater(log_max, max_log), update_norm, keep_norm)
     return normalize
 
@@ -306,8 +320,8 @@ def module_transfer_ops(
   assign_ops = []
   for source_var, target_var in zip(source_variables, target_variables):
     assign_ops.append(tf.assign(target_var, source_var))
-  assign_ops.append(tf.assign(
-      target_module.norm, source_module.norm))
+  if hasattr(target_module, 'norm'):
+    assign_ops.append(tf.assign(target_module.norm, source_module.norm))
   return tf.group(*assign_ops)
 
 
@@ -328,16 +342,15 @@ class FullyConnectedNetwork(Wavefunction):
     self._layer_size = layer_size
     self._nonlinearity = nonlinearity
     self._output_activation = output_activation
-
-    normalization = functools.partial(tf.subtract, y=self.norm)
-
     with self._enter_variable_scope():
       self._components = []
       for _ in range(num_layers):
         self._components += [snt.Linear(output_size=layer_size), nonlinearity]
       self._components += [snt.Linear(output_size=1), tf.squeeze]
-      self._components += [normalization, output_activation]
-
+      if output_activation == tf.exp:
+        self._components += [self.add_exp_normalization, tf.exp]
+      else:
+        self._components += [output_activation]
 
   def _build(
       self,
@@ -394,16 +407,13 @@ class RestrictedBoltzmannNetwork(Wavefunction):
     self._num_layers = num_layers
     self._layer_size = layer_size
     self._nonlinearity = nonlinearity
-
-    normalization = functools.partial(tf.subtract, y=self.norm)
     reduction = functools.partial(tf.reduce_sum, axis=1)
-
     with self._enter_variable_scope():
       self._components = []
       for _ in range(num_layers):
         self._components += [snt.Linear(output_size=layer_size), nonlinearity]
       self._components += [snt.Linear(layer_size), tf.cosh, tf.log]
-      self._components += [reduction, normalization]
+      self._components += [reduction, self.add_exp_normalization]
       self._onsite_layer = snt.Linear(output_size=1)
 
   def _build(
@@ -471,16 +481,16 @@ class Conv1DNetwork(Wavefunction):
     self._output_activation = output_activation
 
     reduction = functools.partial(tf.reduce_sum, axis=[1, 2])
-    normalization = functools.partial(tf.subtract, y=self.norm)
-
     self._components = []
     with self._enter_variable_scope():
       for layer in range(num_layers):
         self._components.append(layers.Conv1dPeriodic(num_filters, kernel_size))
         if layer + 1 != num_layers:
           self._components.append(nonlinearity)
-
-    self._components += [reduction, normalization, output_activation]
+      if output_activation == tf.exp:
+        self._components += [reduction, self.add_exp_normalization, tf.exp]
+      else:
+        self._components += [reduction, output_activation]
 
   def _build(
       self,
@@ -554,16 +564,16 @@ class Conv2DNetwork(Wavefunction):
     self._size_y = size_y
 
     reduction = functools.partial(tf.reduce_sum, axis=[1, 2, 3])
-    normalization = functools.partial(tf.subtract, y=self.norm)
-
     self._components = []
     with self._enter_variable_scope():
       for layer in range(num_layers):
         self._components.append(layers.Conv2dPeriodic(num_filters, kernel_size))
         if layer + 1 != num_layers:
           self._components.append(nonlinearity)
-
-    self._components += [reduction, normalization, output_activation]
+      if output_activation == tf.exp:
+        self._components += [reduction, self.add_exp_normalization, tf.exp]
+      else:
+        self._components += [reduction, output_activation]
 
   def _build(
       self,
@@ -640,8 +650,6 @@ class ResNet1D(Wavefunction):
     self._output_activation = output_activation
 
     reduction = functools.partial(tf.reduce_sum, axis=[1, 2])
-    normalization = functools.partial(tf.subtract, y=self.norm)
-
     block_args = {
         'num_filters': num_filters,
         'kernel_shape': kernel_size,
@@ -656,9 +664,11 @@ class ResNet1D(Wavefunction):
           res_blocks.append(layers.BottleneckResBlock1d(**block_args))
         else:
           res_blocks.append(layers.ResBlock1d(**block_args))
-
       self._components = [initial_conv,] + res_blocks
-      self._components += [reduction, normalization, output_activation]
+      if output_activation == tf.exp:
+        self._components += [reduction, self.add_exp_normalization, tf.exp]
+      else:
+        self._components += [reduction, output_activation]
 
 
   def _build(
@@ -740,7 +750,6 @@ class ResNet2D(Wavefunction):
     self._output_activation = output_activation
 
     reduction = functools.partial(tf.reduce_sum, axis=[1, 2, 3])
-    normalization = functools.partial(tf.subtract, y=self.norm)
     res_blocks = []
     block_args = {
         'num_filters': num_filters,
@@ -754,9 +763,11 @@ class ResNet2D(Wavefunction):
           res_blocks.append(layers.BottleneckResBlock2d(**block_args))
         else:
           res_blocks.append(layers.ResBlock2d(**block_args))
-
       self._components = [initial_conv,] + res_blocks
-      self._components += [reduction, normalization, output_activation]
+      if output_activation == tf.exp:
+        self._components += [reduction, self.add_exp_normalization, tf.exp]
+      else:
+        self._components += [reduction, output_activation]
 
   def _build(
       self,
@@ -899,7 +910,8 @@ class ProjectedBDG(Wavefunction):
     pre_det = tf.reshape(tf.boolean_mask(tiled_pairing, bool_mask), det_size)
 
     sign, ldet = tf.linalg.slogdet(pre_det)
-    return sign * tf.exp(ldet - self.norm)
+    det_value = tf.exp(self.add_exp_normalization(ldet))
+    return sign * det_value
 
   @classmethod
   def from_hparams(
