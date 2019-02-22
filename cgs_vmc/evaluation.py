@@ -152,8 +152,8 @@ class MonteCarloOperatorEvaluator(WavefunctionEvaluator):
     return values
 
 
-class SaveWavefunctionEvaluator(WavefunctionEvaluator):
-  """Implements thep process of evaluation of wavefunction on full basis."""
+class VectorWavefunctionEvaluator(WavefunctionEvaluator):
+  """Implements the process of evaluation of wavefunction on full basis."""
 
   def build_eval_ops(
       self,
@@ -173,7 +173,7 @@ class SaveWavefunctionEvaluator(WavefunctionEvaluator):
     Returns:
       NamedTuple holding tensors needed to run evaluation.
     """
-    del operator  # not used by SaveWavefunctionEvaluator.
+    del operator  # not used by VectorWavefunctionEvaluator.
     batch_size = hparams.batch_size
     n_sites = hparams.num_sites
 

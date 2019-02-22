@@ -5,14 +5,12 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import numpy as np
 import tensorflow as tf
 
 from absl import app
 from absl import flags
 
 import evaluation
-import operators
 import training
 import wavefunctions
 import utils
@@ -21,9 +19,9 @@ import utils
 flags.DEFINE_string(
     'checkpoint_dir', '',
     'Full path to the checkpoint directory.')
-flags.DEFINE_integer(
-    'num_sites', 24,
-    'Number of sites in the system.')
+flags.DEFINE_string(
+    'supervisor_dir', '',
+    'Full path to the directory with supervisors checkpoints.')
 
 # Training parameters
 flags.DEFINE_integer(
@@ -43,9 +41,13 @@ flags.DEFINE_string(
     'wavefunctions.WAVEFUNCTION_TYPES dict. and '
     'wavefunctions.build_wavefunction() function.')
 flags.DEFINE_string(
-    'optimizer', 'ITSWO',
-    'Ground state optimizer to use. Available options listed in '
-    'training.GROUND_STATE_OPTIMIZERS dict.')
+    'optimizer', 'SWO',
+    'Supervised optimizer to use. Available options listed in '
+    'training.SUPERVISED_OPTIMIZERS dict.')
+
+flags.DEFINE_string(
+    'list_of_evaluators', '',
+    'Com-separated list of evaluators to run during training.')
 
 flags.DEFINE_boolean(
     'generate_vectors', False,
@@ -64,26 +66,28 @@ flags.DEFINE_boolean(
     'override', True,
     'Whether to automatically override existing Hparams.')
 
+
 FLAGS = flags.FLAGS
 
 
 def main(argv):
-  """Runs wavefunction optimization.
+  """Runs supervised wavefunction optimization.
 
-  This pipeline optimizes wavefunction specified in flags on a Marshal sign
-  included Heisenberg model. Bonds should be specified in the file J.txt in
-  checkpoint directory, otherwise will default to 1D PBC system. For other
-  tunable parameters see flags description.
+  This pipeline optimizes wavefunction by matching amplitudes of a target state.
+
   """
   del argv  # Not used.
-  n_sites = FLAGS.num_sites
+
+  supervisor_path = os.path.join(FLAGS.supervisor_dir, 'hparams.pbtxt')
+  supervisor_hparams = utils.load_hparams(supervisor_path)
+
   hparams = utils.create_hparams()
+  hparams.set_hparam('num_sites', supervisor_hparams.num_sites)
   hparams.set_hparam('checkpoint_dir', FLAGS.checkpoint_dir)
+  hparams.set_hparam('supervisor_dir', FLAGS.supervisor_dir)
   hparams.set_hparam('basis_file_path', FLAGS.basis_file_path)
-  hparams.set_hparam('num_sites', FLAGS.num_sites)
   hparams.set_hparam('num_epochs', FLAGS.num_epochs)
   hparams.set_hparam('wavefunction_type', FLAGS.wavefunction_type)
-  hparams.set_hparam('wavefunction_optimizer_type', FLAGS.optimizer)
   hparams.parse(FLAGS.hparams)
   hparams_path = os.path.join(hparams.checkpoint_dir, 'hparams.pbtxt')
 
@@ -97,24 +101,16 @@ def main(argv):
   with tf.gfile.GFile(hparams_path, 'w') as file:
     file.write(str(hparams.to_proto()))
 
-  bonds_file_path = os.path.join(FLAGS.checkpoint_dir, 'J.txt')
-  if os.path.exists(bonds_file_path):
-    heisenberg_data = np.genfromtxt(bonds_file_path, dtype=int)
-    heisenberg_bonds = [[bond[0], bond[1]] for bond in heisenberg_data]
-  else:
-    heisenberg_bonds = [(i, (i + 1) % n_sites) for i in range(0, n_sites)]
-
+  target_wavefunction = wavefunctions.build_wavefunction(supervisor_hparams)
   wavefunction = wavefunctions.build_wavefunction(hparams)
-  hamiltonian = operators.HeisenbergHamiltonian(heisenberg_bonds, -1., 1.)
 
-  wavefunction_optimizer = training.GROUND_STATE_OPTIMIZERS[FLAGS.optimizer]()
+  wavefunction_optimizer = training.SUPERVISED_OPTIMIZERS[FLAGS.optimizer]()
 
-  # TODO(dkochkov) change the pipeline to avoid adding elements to dictionary
   shared_resources = {}
 
   graph_building_args = {
       'wavefunction': wavefunction,
-      'hamiltonian': hamiltonian,
+      'target_wavefunction': target_wavefunction,
       'hparams': hparams,
       'shared_resources': shared_resources
   }
@@ -126,6 +122,9 @@ def main(argv):
   init_l = tf.local_variables_initializer()
   session.run([init, init_l])
 
+  target_saver = tf.train.Saver(target_wavefunction.get_trainable_variables())
+  supervisor_checkpoint = tf.train.latest_checkpoint(FLAGS.supervisor_dir)
+  target_saver.restore(session, supervisor_checkpoint)
   checkpoint_saver = tf.train.Saver(
       wavefunction.get_trainable_variables(), max_to_keep=5)
 
@@ -133,19 +132,13 @@ def main(argv):
     latest_checkpoint = tf.train.latest_checkpoint(hparams.checkpoint_dir)
     checkpoint_saver.restore(session, latest_checkpoint)
 
-  # TODO(kochkov92) use custom output file.
-  training_metrics_file = os.path.join(hparams.checkpoint_dir, 'metrics.txt')
   for epoch_number in range(FLAGS.num_epochs):
-    checkpoint_name = 'model_prior_{}_epochs'.format(epoch_number)
-    save_path = os.path.join(hparams.checkpoint_dir, checkpoint_name)
-    checkpoint_saver.save(session, save_path)
-
-    metrics_record = wavefunction_optimizer.run_optimization_epoch(
-        train_ops, session, hparams)
-
-    metrics_file_output = open(training_metrics_file, 'a')
-    metrics_file_output.write('{}\n'.format(metrics_record))
-    metrics_file_output.close()
+    wavefunction_optimizer.run_optimization_epoch(
+        train_ops, session, hparams, epoch_number)
+    if epoch_number % FLAGS.checkpoint_frequency == 0:
+      checkpoint_name = 'model_after_{}_epochs'.format(epoch_number)
+      save_path = os.path.join(hparams.checkpoint_dir, checkpoint_name)
+      checkpoint_saver.save(session, save_path)
 
   if FLAGS.generate_vectors:
     vector_generator = evaluation.VectorWavefunctionEvaluator()
