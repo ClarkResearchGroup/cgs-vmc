@@ -13,7 +13,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-from typing import Dict, List, NamedTuple
+from typing import Dict, NamedTuple
 
 import numpy as np
 import tensorflow as tf
@@ -135,8 +135,7 @@ class SupervisedWavefunctionOptimizer():
   """Supervised wavefunction optimizer.
 
   Implements SWO with |psi|^2 sampling and adjusted L2 loss as the
-  objective function. At the begining of training normalizes wave-functions
-  roughly to values (0, max_value) specified in wavefunctions.update_norm.
+  objective function.
   """
   def build_opt_ops(
       self,
@@ -167,7 +166,7 @@ class SupervisedWavefunctionOptimizer():
     psi_target = target_wavefunction(configs)
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target) /
+        tf.squared_difference(psi, psi_target * 500.) /
         (tf.square(tf.stop_gradient(psi)))
     )
     opt_v = wavefunction.get_trainable_variables()
@@ -195,7 +194,7 @@ class SupervisedWavefunctionOptimizer():
       session: tf.Session,
       hparams: tf.contrib.training.HParams,
       epoch_number: int,
-  ) -> List[np.float32]:
+  ):
     """Runs training epoch by executing `train_ops` in `session`.
 
     Args:
@@ -203,19 +202,122 @@ class SupervisedWavefunctionOptimizer():
       session: Active session where to run a training epoch.
       hparams: Hyperparameters of the optimization procedure.
       epoch_number: Number of epoch.
-
-    Returns:
-      List of loss values during epoch.
-      #TODO(kochkov92) Move evaluation to summaries and remove return.
     """
     del epoch_number  # not used by SupervisedWavefunctionOptimizer.
-    loss_values = []
     for _ in range(hparams.num_batches_per_epoch):
       for _ in range(hparams.num_monte_carlo_sweeps * hparams.num_sites):
         session.run(train_ops.mc_step)
-      _, loss = session.run([train_ops.apply_gradients, train_ops.metrics])
-      loss_values.append(loss)
-    return loss_values
+      session.run(train_ops.apply_gradients)
+    session.run(train_ops.epoch_increment)
+
+
+class LogOverlapSWO():
+  """Supervised wavefunction optimizer based on log(overlap) optimization.
+
+  Implements SWO with |psi|^2 sampling and Log(|<psi|phi>|^{2}) as the
+  objective function.
+  """
+  # pylint: disable=too-many-locals
+  def build_opt_ops(
+      self,
+      wavefunction: wavefunctions.Wavefunction,
+      target_wavefunction: wavefunctions.Wavefunction,
+      hparams: tf.contrib.training.HParams,
+      shared_resources: Dict[graph_builders.ResourceName, tf.Tensor],
+  ) -> NamedTuple:
+    """Adds wavefunction optimization ops to the graph.
+
+    Args:
+      wavefunction: Wavefunction model to optimize.
+      target_wavefunction: Wavefunction model that serves as a target state.
+      shared_resources: Resources sharable among different modules.
+      hparams: Hyperparameters of the optimization procedure.
+
+    Returns:
+      NamedTuple holding tensors needed to run a training epoch.
+    """
+    batch_size = hparams.batch_size
+    n_sites = hparams.num_sites
+    configs = graph_builders.get_configs(shared_resources, batch_size, n_sites)
+    mc_step, acc_rate = graph_builders.get_monte_carlo_sampling(
+        shared_resources, configs, wavefunction)
+
+    opt_v = wavefunction.get_trainable_variables()
+    psi = wavefunction(configs)
+    psi_target = target_wavefunction(configs)
+    psi_no_grad = tf.stop_gradient(psi)
+    # Computation of L=log(overlap) gradient with respect to opt_v using
+    # "grad(L) = <grad(log(psi))> - <grad(log(psi))*ratio> / <ratio>"
+    # where ratio is the ratio of target and curren wave-function.
+    ratio = tf.stop_gradient(psi_target / psi)
+    log_psi_raw_grads = tf.gradients(psi / psi_no_grad, opt_v)
+    log_psi_grads = [tf.convert_to_tensor(grad) for grad in log_psi_raw_grads]
+    ratio_log_psi_raw_grads = tf.gradients(ratio * psi / psi_no_grad, opt_v)
+    ratio_log_psi_grads = [
+        tf.convert_to_tensor(grad) for grad in ratio_log_psi_raw_grads
+    ]
+    log_grads = [
+        tf.metrics.mean_tensor(log_psi_grad) for log_psi_grad in log_psi_grads
+    ]
+    ratio_grads = [
+        tf.metrics.mean_tensor(grad) for grad in ratio_log_psi_grads
+    ]
+    mean_ratio, accumulate_ratio = tf.metrics.mean(ratio)
+    mean_log_grads, accumulate_log_grads = list(map(list, zip(*log_grads)))
+    mean_ratio_grads, accumulate_ratio_grads = list(
+        map(list, zip(*ratio_grads)))
+    all_updates = accumulate_log_grads + accumulate_ratio_grads
+    all_updates.append(accumulate_ratio)
+    accumulate_gradients = tf.group(all_updates)
+    optimizer = create_sgd_optimizer(hparams)
+    grad_pairs = zip(mean_log_grads, mean_ratio_grads)
+    overlap_gradients = [
+        grad - scaled_grad / mean_ratio for grad, scaled_grad in grad_pairs
+    ]
+    grads_and_vars = list(zip(overlap_gradients, opt_v))
+    apply_gradients = optimizer.apply_gradients(grads_and_vars)
+
+    reset_gradients = tf.variables_initializer(tf.local_variables())
+    update_wf_norm = wavefunction.update_norm(psi)
+    num_epochs = graph_builders.get_or_create_num_epochs()
+    epoch_increment = tf.assign_add(num_epochs, 1)
+
+    train_ops = TrainOpsSupervised(
+        accumulate_gradients=accumulate_gradients,
+        apply_gradients=apply_gradients,
+        reset_gradients=reset_gradients,
+        mc_step=mc_step,
+        acc_rate=acc_rate,
+        metrics=None,
+        update_wf_norm=update_wf_norm,
+        epoch_increment=epoch_increment,
+    )
+    return train_ops
+
+
+  def run_optimization_epoch(
+      self,
+      train_ops: NamedTuple,
+      session: tf.Session,
+      hparams: tf.contrib.training.HParams,
+      epoch_number: int,
+  ):
+    """Runs training epoch by executing `train_ops` in `session`.
+
+    Args:
+      train_ops: Training operations returned by `build_opt_ops` method.
+      session: Active session where to run a training epoch.
+      hparams: Hyperparameters of the optimization procedure.
+      epoch_number: Number of epoch.
+    """
+    del epoch_number  # not used by SupervisedWavefunctionOptimizer.
+    for _ in range(hparams.num_batches_per_epoch):
+      for _ in range(hparams.num_monte_carlo_sweeps * hparams.num_sites):
+        session.run(train_ops.mc_step)
+      session.run(train_ops.reset_gradients)
+      session.run(train_ops.accumulate_gradients)
+      session.run(train_ops.apply_gradients)
+    session.run(train_ops.epoch_increment)
 
 
 class EnergyGradientOptimizer(WavefunctionOptimizer):
@@ -632,4 +734,5 @@ GROUND_STATE_OPTIMIZERS = {
 
 SUPERVISED_OPTIMIZERS = {
     'SWO': SupervisedWavefunctionOptimizer,
+    'LogOverlapSWO': LogOverlapSWO,
 }

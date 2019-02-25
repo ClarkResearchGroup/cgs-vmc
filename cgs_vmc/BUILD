@@ -86,6 +86,20 @@ py_binary(
     srcs = ["run_training.py"],
     deps = [
         ":wavefunctions",
+        ":training",
+        ":utils",
+        ":operators",
+    ],
+)
+
+py_binary(
+    name = "run_supervised_training",
+    srcs = ["run_supervised_training.py"],
+    deps = [
+    	":evaluation",
+        ":wavefunctions",
+        ":training",
+        ":utils",
     ],
 )
 
