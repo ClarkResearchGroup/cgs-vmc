@@ -1080,6 +1080,85 @@ class FullVector(Wavefunction):
     return cls(**full_vector_params)
 
 
+class GNN(Wavefunction):
+  """Implementation of wavefunction as graph neural network."""
+
+  def __init__(
+      self,
+      num_layers: int,
+      num_filters: int,
+      adj: np.array,
+      nonlinearity: tf.Tensor = tf.nn.relu,
+      output_activation: tf.Tensor = tf.exp,
+      name: str = 'graph_neural_network',
+  ):
+    """Creates an instance of a class.
+
+    Args:
+      num_layers: Number of convolutional layers.
+      num_filters: Number of convolutional filters in each layer.
+      adj: adjacency list of the graph.
+      nonlinearity: Nonlinearity to use between hidden layers.
+      output_activation: Wavefunction amplitude activation function.
+      name: Name of the wave-function.
+    """
+    super(GNN, self).__init__(name=name)
+    self._num_layers = num_layers
+    self._num_filters = num_filters
+    self._adj = adj
+    self._nonlinearity = nonlinearity
+    self._output_activation = output_activation
+
+    reduction = functools.partial(tf.reduce_sum, axis=[1, 2])
+    self._components = []
+    with self._enter_variable_scope():
+      for layer in range(num_layers):
+        self._components.append(layers.GNN_layer(num_filters, adj))
+        if layer + 1 != num_layers:
+          self._components.append(nonlinearity)
+      if output_activation == tf.exp:
+        self._components += [reduction, self.add_exp_normalization, tf.exp]
+      else:
+        self._components += [reduction, output_activation]
+
+  def _build(
+      self,
+      inputs: tf.Tensor,
+  ) -> tf.Tensor:
+    """Builds computational graph evaluating the wavefunction on inputs.
+
+    Args:
+      inputs: Input tensor, must have shape (batch, num_sites, ...).
+
+    Returns:
+      Tensor holding values of the wavefunction on `inputs`.
+
+    Raises:
+      ValueError: Input tensor has wrong shape.
+    """
+    return snt.Sequential(self._components)(tf.expand_dims(inputs, 2))
+
+  @classmethod
+  def from_hparams(
+      cls,
+      hparams: tf.contrib.training.HParams,
+      name: str = ''
+  ) -> 'Wavefunction':
+    """Constructs an instance of a class from hparams."""
+    gnn_params = {
+        'num_layers': hparams.num_conv_layers,
+        'num_filters': hparams.num_conv_filters,
+        'adj': np.genfromtxt(hparams.adj_list, dtype=int),
+        'output_activation': layers.NONLINEARITIES[hparams.output_activation],
+        'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
+    }
+    if name:
+      gnn_params['name'] = name
+    return cls(**gnn)
+
+
+
+
 def build_wavefunction(
     hparams: tf.contrib.training.HParams,
 ) -> 'Wavefunction':
@@ -1139,4 +1218,5 @@ WAVEFUNCTION_TYPES = {
     'res_net_1d': ResNet1D,
     'res_net_2d': ResNet2D,
     'ed_vector': FullVector,
+    'gnn': GNN,
 }

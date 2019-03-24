@@ -107,6 +107,9 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
       bot_lin_table_file='',
       ed_vector_file='',
 
+      # GNN parameters
+      adj_list = 'adj.txt',
+
       nonlinearity='relu',
       output_activation='exp',
 

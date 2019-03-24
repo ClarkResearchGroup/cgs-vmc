@@ -55,6 +55,9 @@ flags.DEFINE_boolean(
 flags.DEFINE_string(
     'basis_file_path', '',
     'Path to the basis file for full wavefunction evaluation.')
+flags.DEFINE_string(
+    'adj_list', '',
+    'Name for the adjacency list for graph neural network gnn.')
 
 flags.DEFINE_string(
     'hparams', '',
@@ -84,6 +87,7 @@ def main(argv):
   hparams = utils.create_hparams()
   hparams.set_hparam('num_sites', supervisor_hparams.num_sites)
   hparams.set_hparam('checkpoint_dir', FLAGS.checkpoint_dir)
+  hparams.set_hparam('adj_list', os.path.join(FLAGS.checkpoint_dir, FLAGS.adj_list))
   hparams.set_hparam('supervisor_dir', FLAGS.supervisor_dir)
   hparams.set_hparam('basis_file_path', FLAGS.basis_file_path)
   hparams.set_hparam('num_epochs', FLAGS.num_epochs)

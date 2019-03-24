@@ -5,6 +5,7 @@ from __future__ import print_function
 
 from typing import Any
 
+import numpy as np
 import sonnet as snt
 import tensorflow as tf
 
@@ -405,3 +406,40 @@ class MatrixProductUnit(snt.AbstractModule):
 
     batch_components = [self._mps_var[:, :, index] for index in index_inputs]
     return tf.stack(batch_components, axis=0)
+
+
+
+class GNN_layer(snt.AbstractModule):
+
+  """GNN module with adjacency list"""
+
+  def __init__(
+      self,
+      output_channels: int,
+      adj: np.array,
+      name: str = 'gnn_layer'):
+    """Constructs GNN moduel.
+
+      Args:
+      output_channels: Number of output channels in convolution.
+      adj: adjacency list of the graph.
+      name: Name of the module.
+    """
+    super(GNN_layer, self).__init__(name=name)
+    self._output_channels = output_channels
+    self._adj = adj
+
+
+  def _build(self, inputs: tf.Tensor) -> tf.Tensor:
+    """Connects the GNN module into the graph, with input `inputs`.
+
+    Args:
+      inputs: Tensor with input values.
+
+    Returns:
+      Result of convolving `inputs` with adjacency matrix and module's kernels.
+    """
+    neighbor_num = len(adj[0])
+    adj_layer = tf.gather(inputs,self._adj,axis=1)
+    conv = tf.layers.conv2d(adj_layer, self._filters, kernel_size=(1,neighbor_num)) 
+    return tf.squeeze(conv,axis=2)
