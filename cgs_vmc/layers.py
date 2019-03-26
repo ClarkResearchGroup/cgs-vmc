@@ -409,14 +409,14 @@ class MatrixProductUnit(snt.AbstractModule):
 
 
 class GraphConvLayer(snt.AbstractModule):
-  """GNN module with adjacency list"""
+  """GraphConvLayer module with adjacency list"""
 
   def __init__(
       self,
       output_channels: int,
       adj: np.ndarray,
       name: str = 'gnn_layer'):
-    """Constructs GNN moduel.
+    """Constructs GraphConvLayer moduel.
 
     Args:
       output_channels: Number of output channels in convolution.
@@ -428,7 +428,7 @@ class GraphConvLayer(snt.AbstractModule):
     self._adj = adj
 
   def _build(self, inputs: tf.Tensor) -> tf.Tensor:
-    """Connects the GNN module into the graph, with input `inputs`.
+    """Connects the GraphConvLayer module into the graph, with input `inputs`.
 
     Args:
       inputs: Tensor with input values.
