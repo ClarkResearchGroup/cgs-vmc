@@ -420,7 +420,7 @@ class GraphConvLayer(snt.AbstractModule):
 
     Args:
       output_channels: Number of output channels in convolution.
-      adj: Adjacency list of the graph that stores indices of neighbors and itself for every site, with shape [n_site, num_neighbors+1].
+      adj: Adjacency list of the graph that stores indices of neighbors and itself for every site, with shape [n_site, num_neighbor].
       name: Name of the module.
     """
     super(GraphConvLayer, self).__init__(name=name)
@@ -436,7 +436,8 @@ class GraphConvLayer(snt.AbstractModule):
     Returns:
       Result of convolving `inputs` with adjacency matrix and module's kernels.
     """
-    neighbor_num = len(adj[0])
-    adj_layer = tf.gather(inputs,self._adj,axis=1)
-    conv = tf.layers.conv2d(adj_layer, self._filters, kernel_size=(1,neighbor_num)) 
-    return tf.squeeze(conv,axis=2)
+    num_neighbor = np.shape(adj)[1]
+    adj_table = tf.gather(inputs, self._adj, axis=1)
+    conv = tf.layers.conv2d(adj_table, self._filters, \
+            kernel_size=(1, num_neighbor)) 
+    return tf.squeeze(conv, axis=2)

@@ -1080,14 +1080,14 @@ class FullVector(Wavefunction):
     return cls(**full_vector_params)
 
 
-class GNN(Wavefunction):
+class GraphConvNetwork(Wavefunction):
   """Implementation of wavefunction as graph neural network."""
 
   def __init__(
       self,
       num_layers: int,
       num_filters: int,
-      adj: np.array,
+      adj: np.ndarray,
       nonlinearity: tf.Tensor = tf.nn.relu,
       output_activation: tf.Tensor = tf.exp,
       name: str = 'graph_neural_network',
@@ -1102,7 +1102,7 @@ class GNN(Wavefunction):
       output_activation: Wavefunction amplitude activation function.
       name: Name of the wave-function.
     """
-    super(GNN, self).__init__(name=name)
+    super(GraphConvNetwork, self).__init__(name=name)
     self._num_layers = num_layers
     self._num_filters = num_filters
     self._adj = adj
@@ -1132,9 +1132,6 @@ class GNN(Wavefunction):
 
     Returns:
       Tensor holding values of the wavefunction on `inputs`.
-
-    Raises:
-      ValueError: Input tensor has wrong shape.
     """
     return snt.Sequential(self._components)(tf.expand_dims(inputs, 2))
 
@@ -1148,15 +1145,13 @@ class GNN(Wavefunction):
     gnn_params = {
         'num_layers': hparams.num_conv_layers,
         'num_filters': hparams.num_conv_filters,
-        'adj': np.genfromtxt(hparams.adj_list, dtype=int),
+        'adj': np.genfromtxt(hparams.adjacency_list, dtype=int),
         'output_activation': layers.NONLINEARITIES[hparams.output_activation],
         'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
     }
     if name:
       gnn_params['name'] = name
-    return cls(**gnn)
-
-
+    return cls(**gnn_params)
 
 
 def build_wavefunction(
@@ -1218,5 +1213,5 @@ WAVEFUNCTION_TYPES = {
     'res_net_1d': ResNet1D,
     'res_net_2d': ResNet2D,
     'ed_vector': FullVector,
-    'gnn': GNN,
+    'gnn': GraphConvNetwork,
 }
