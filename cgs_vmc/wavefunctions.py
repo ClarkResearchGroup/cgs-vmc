@@ -1113,7 +1113,7 @@ class GNN(Wavefunction):
     self._components = []
     with self._enter_variable_scope():
       for layer in range(num_layers):
-        self._components.append(layers.GNN_layer(num_filters, adj))
+        self._components.append(layers.GraphConvLayer(num_filters, adj))
         if layer + 1 != num_layers:
           self._components.append(nonlinearity)
       if output_activation == tf.exp:

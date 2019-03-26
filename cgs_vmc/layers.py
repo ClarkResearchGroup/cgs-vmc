@@ -408,27 +408,24 @@ class MatrixProductUnit(snt.AbstractModule):
     return tf.stack(batch_components, axis=0)
 
 
-
-class GNN_layer(snt.AbstractModule):
-
+class GraphConvLayer(snt.AbstractModule):
   """GNN module with adjacency list"""
 
   def __init__(
       self,
       output_channels: int,
-      adj: np.array,
+      adj: np.ndarray,
       name: str = 'gnn_layer'):
     """Constructs GNN moduel.
 
-      Args:
+    Args:
       output_channels: Number of output channels in convolution.
-      adj: adjacency list of the graph.
+      adj: Adjacency list of the graph that stores indices of neighbors and itself for every site, with shape [n_site, num_neighbors+1].
       name: Name of the module.
     """
-    super(GNN_layer, self).__init__(name=name)
+    super(GraphConvLayer, self).__init__(name=name)
     self._output_channels = output_channels
     self._adj = adj
-
 
   def _build(self, inputs: tf.Tensor) -> tf.Tensor:
     """Connects the GNN module into the graph, with input `inputs`.
