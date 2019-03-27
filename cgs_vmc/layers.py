@@ -415,12 +415,13 @@ class GraphConvLayer(snt.AbstractModule):
       self,
       output_channels: int,
       adj: np.ndarray,
-      name: str = 'gnn_layer'):
+      name: str = 'graph_conv_layer'):
     """Constructs GraphConvLayer moduel.
 
     Args:
       output_channels: Number of output channels in convolution.
-      adj: Adjacency list of the graph that stores indices of neighbors and itself for every site, with shape [n_site, num_neighbor].
+      adj: Adjacency list of the graph that stores indices of neighbors
+          and itself for every site, with shape [n_site, num_neighbor].
       name: Name of the module.
     """
     super(GraphConvLayer, self).__init__(name=name)
@@ -436,8 +437,8 @@ class GraphConvLayer(snt.AbstractModule):
     Returns:
       Result of convolving `inputs` with adjacency matrix and module's kernels.
     """
-    num_neighbor = np.shape(adj)[1]
+    num_neighbor = np.shape(self._adj)[1]
     adj_table = tf.gather(inputs, self._adj, axis=1)
-    conv = tf.layers.conv2d(adj_table, self._filters, \
-            kernel_size=(1, num_neighbor)) 
+    conv = tf.layers.conv2d(adj_table, self._output_channels,
+                            kernel_size=(1, num_neighbor))
     return tf.squeeze(conv, axis=2)

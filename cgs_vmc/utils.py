@@ -108,7 +108,7 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
       ed_vector_file='',
 
       # GraphConvNetwork parameters
-      adjacency_list = '',
+      adjacency_list='',
 
       nonlinearity='relu',
       output_activation='exp',

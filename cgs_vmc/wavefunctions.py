@@ -1090,14 +1090,14 @@ class GraphConvNetwork(Wavefunction):
       adj: np.ndarray,
       nonlinearity: tf.Tensor = tf.nn.relu,
       output_activation: tf.Tensor = tf.exp,
-      name: str = 'graph_neural_network',
+      name: str = 'graph_conv_network',
   ):
     """Creates an instance of a class.
 
     Args:
       num_layers: Number of convolutional layers.
       num_filters: Number of convolutional filters in each layer.
-      adj: adjacency list of the graph.
+      adj: Adjacency list of the graph.
       nonlinearity: Nonlinearity to use between hidden layers.
       output_activation: Wavefunction amplitude activation function.
       name: Name of the wave-function.
