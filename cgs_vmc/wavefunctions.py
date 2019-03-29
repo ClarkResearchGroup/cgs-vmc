@@ -1145,7 +1145,7 @@ class GraphConvNetwork(Wavefunction):
     gnn_params = {
         'num_layers': hparams.num_conv_layers,
         'num_filters': hparams.num_conv_filters,
-        'adj': np.genfromtxt(hparams.adjacency_list, dtype=int),
+        'adj': np.genfromtxt(hparams.adjacency_list_path, dtype=int),
         'output_activation': layers.NONLINEARITIES[hparams.output_activation],
         'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
     }

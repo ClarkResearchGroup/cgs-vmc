@@ -44,6 +44,11 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
     bot_lin_table_file: Name of file that stores Lin bot bits lookup table.
     ed_vector_file: Name of the file that stores all wavefunction amplitudes.
 
+    adjacency_list_path: Path to the file that stores the adjacency list of
+        the lattice for graph convolution. Must be shaped as 2D array of
+        dtype=int, with shape [n_sites, num_neighbors]. Each line should
+        contain indices of neighbors in a fixed order.
+
 
     nonlinearity: Nonlinearity to use for hidden activations.
     output_activation: Nonlinearity to use for the output (if included).
@@ -108,7 +113,7 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
       ed_vector_file='',
 
       # GraphConvNetwork parameters
-      adjacency_list='',
+      adjacency_list_path='',
 
       nonlinearity='relu',
       output_activation='exp',

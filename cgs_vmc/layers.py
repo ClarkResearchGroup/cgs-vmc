@@ -427,6 +427,12 @@ class GraphConvLayer(snt.AbstractModule):
     super(GraphConvLayer, self).__init__(name=name)
     self._output_channels = output_channels
     self._adj = adj
+    num_neighbors = np.shape(self._adj)[1]
+    kernel_shape = (1, num_neighbors)
+    with self._enter_variable_scope():
+      self._conv_module = snt.Conv2D(output_channels=output_channels,
+                                     kernel_shape=kernel_shape,
+                                     padding=snt.VALID)
 
   def _build(self, inputs: tf.Tensor) -> tf.Tensor:
     """Connects the GraphConvLayer module into the graph, with input `inputs`.
@@ -437,8 +443,5 @@ class GraphConvLayer(snt.AbstractModule):
     Returns:
       Result of convolving `inputs` with adjacency matrix and module's kernels.
     """
-    num_neighbor = np.shape(self._adj)[1]
     adj_table = tf.gather(inputs, self._adj, axis=1)
-    conv = tf.layers.conv2d(adj_table, self._output_channels,
-                            kernel_size=(1, num_neighbor))
-    return tf.squeeze(conv, axis=2)
+    return tf.squeeze(self._conv_module(adj_table), axis=2)
