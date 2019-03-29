@@ -5,6 +5,7 @@ from __future__ import print_function
 
 from typing import Any
 
+import numpy as np
 import sonnet as snt
 import tensorflow as tf
 
@@ -405,3 +406,42 @@ class MatrixProductUnit(snt.AbstractModule):
 
     batch_components = [self._mps_var[:, :, index] for index in index_inputs]
     return tf.stack(batch_components, axis=0)
+
+
+class GraphConvLayer(snt.AbstractModule):
+  """GraphConvLayer module with adjacency list"""
+
+  def __init__(
+      self,
+      output_channels: int,
+      adj: np.ndarray,
+      name: str = 'graph_conv_layer'):
+    """Constructs GraphConvLayer moduel.
+
+    Args:
+      output_channels: Number of output channels in convolution.
+      adj: Adjacency list of the graph that stores indices of neighbors
+          and itself for every site, with shape [n_site, num_neighbor].
+      name: Name of the module.
+    """
+    super(GraphConvLayer, self).__init__(name=name)
+    self._output_channels = output_channels
+    self._adj = adj
+    num_neighbors = np.shape(self._adj)[1]
+    kernel_shape = (1, num_neighbors)
+    with self._enter_variable_scope():
+      self._conv_module = snt.Conv2D(output_channels=output_channels,
+                                     kernel_shape=kernel_shape,
+                                     padding=snt.VALID)
+
+  def _build(self, inputs: tf.Tensor) -> tf.Tensor:
+    """Connects the GraphConvLayer module into the graph, with input `inputs`.
+
+    Args:
+      inputs: Tensor with input values.
+
+    Returns:
+      Result of convolving `inputs` with adjacency matrix and module's kernels.
+    """
+    adj_table = tf.gather(inputs, self._adj, axis=1)
+    return tf.squeeze(self._conv_module(adj_table), axis=2)
