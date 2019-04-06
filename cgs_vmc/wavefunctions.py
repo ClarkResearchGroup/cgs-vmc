@@ -387,6 +387,24 @@ class FullyConnectedNetwork(Wavefunction):
       fcnn_params['name'] = name
     return cls(**fcnn_params)
 
+  @classmethod
+  def output_activation_hparams(
+      cls,
+      hparams: tf.contrib.training.HParams,
+      activation: Any,
+      name: str = ''
+  ) -> 'Wavefunction':
+    """Constructs an instance of a class from hparams."""
+    fcnn_params = {
+        'num_layers': hparams.num_fc_layers,
+        'layer_size': hparams.fc_layer_size,
+        'output_activation': layers.NONLINEARITIES[activation],
+        'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
+    }
+    if name:
+      fcnn_params['name'] = name
+    return cls(**fcnn_params)
+
 
 class RestrictedBoltzmannNetwork(Wavefunction):
   """Implementation of an extended Restricted Boltzmann machine.
@@ -521,6 +539,25 @@ class Conv1DNetwork(Wavefunction):
         'num_filters': hparams.num_conv_filters,
         'kernel_size': hparams.kernel_size,
         'output_activation': layers.NONLINEARITIES[hparams.output_activation],
+        'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
+    }
+    if name:
+      conv_1d_params['name'] = name
+    return cls(**conv_1d_params)
+
+  @classmethod
+  def output_activation_hparams(
+      cls,
+      hparams: tf.contrib.training.HParams,
+      activation: Any,
+      name: str = ''
+  ) -> 'Wavefunction':
+    """Constructs an instance of a class from hparams."""
+    conv_1d_params = {
+        'num_layers': hparams.num_conv_layers,
+        'num_filters': hparams.num_conv_filters,
+        'kernel_size': hparams.kernel_size,
+        'output_activation': layers.NONLINEARITIES[activation],
         'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
     }
     if name:
@@ -1154,6 +1191,25 @@ class GraphConvNetwork(Wavefunction):
     return cls(**gnn_params)
 
 
+  @classmethod
+  def output_activation_hparams(
+      cls,
+      hparams: tf.contrib.training.HParams,
+      activation: Any,
+      name: str = ''
+  ) -> 'Wavefunction':
+    """Constructs an instance of a class from hparams."""
+    gnn_params = {
+        'num_layers': hparams.num_conv_layers,
+        'num_filters': hparams.num_conv_filters,
+        'adj': np.genfromtxt(hparams.adjacency_list_path, dtype=int),
+        'output_activation': layers.NONLINEARITIES[activation],
+        'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
+    }
+    if name:
+      gnn_params['name'] = name
+    return cls(**gnn_params)
+
 def build_wavefunction(
     hparams: tf.contrib.training.HParams,
 ) -> 'Wavefunction':
@@ -1198,6 +1254,33 @@ def build_wavefunction(
     rbm_1 = WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams, 'rbm_1')
     rbm_2 = WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams, 'rbm_2')
     return rbm_1 - rbm_2
+
+  if hparams.wavefunction_type == 'sum':
+    wf_1 = WAVEFUNCTION_TYPES[hparams.wavefunction_type1] \
+            .output_activation_hparams(hparams,
+                                       hparams.output_activation1, 'wf_1')
+    wf_2 = WAVEFUNCTION_TYPES[hparams.wavefunction_type2] \
+            .output_activation_hparams(hparams,
+                                       hparams.output_activation2, 'wf_2')
+    return wf_1 + wf_2
+
+  if hparams.wavefunction_type == 'diff':
+    wf_1 = WAVEFUNCTION_TYPES[hparams.wavefunction_type1] \
+            .output_activation_hparams(hparams,
+                                       hparams.output_activation1, 'wf_1')
+    wf_2 = WAVEFUNCTION_TYPES[hparams.wavefunction_type2] \
+            .output_activation_hparams(hparams,
+                                       hparams.output_activation2, 'wf_2')
+    return wf_1 - wf_2
+
+  if hparams.wavefunction_type == 'product':
+    wf_1 = WAVEFUNCTION_TYPES[hparams.wavefunction_type1] \
+            .output_activation_hparams(hparams,
+                                       hparams.output_activation1, 'wf_1')
+    wf_2 = WAVEFUNCTION_TYPES[hparams.wavefunction_type2] \
+            .output_activation_hparams(hparams,
+                                       hparams.output_activation2, 'wf_2')
+    return wf_1 * wf_2
 
   raise ValueError('Provided wavefunction_type is not registered.')
 
