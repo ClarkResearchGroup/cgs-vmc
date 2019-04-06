@@ -15,6 +15,11 @@ import evaluation
 import wavefunctions
 import utils
 
+# System parameters
+flags.DEFINE_float(
+    'heisenberg_jx', 1.0,
+    'Jx value in Heisenberg Hamiltonian.')
+
 # Wavefunction parameters
 flags.DEFINE_string(
     'checkpoint_dir', '',
@@ -44,6 +49,7 @@ def main(argv):
 
   # TODO(dkochkov) make a more comprehensive Hamiltonian construction method
   bonds_file_path = os.path.join(FLAGS.checkpoint_dir, 'J.txt')
+  heisenberg_jx = FLAGS.heisenberg_jx
   if os.path.exists(bonds_file_path):
     heisenberg_data = np.genfromtxt(bonds_file_path, dtype=int)
     heisenberg_bonds = [[bond[0], bond[1]] for bond in heisenberg_data]
@@ -51,7 +57,8 @@ def main(argv):
     heisenberg_bonds = [(i, (i + 1) % n_sites) for i in range(0, n_sites)]
 
   wavefunction = wavefunctions.build_wavefunction(hparams)
-  hamiltonian = operators.HeisenbergHamiltonian(heisenberg_bonds, -1., 1.)
+  hamiltonian = operators.HeisenbergHamiltonian(heisenberg_bonds,
+                                                heisenberg_jx, 1.)
 
   evaluator = evaluation.MonteCarloOperatorEvaluator()
 

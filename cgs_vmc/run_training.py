@@ -24,6 +24,9 @@ flags.DEFINE_string(
 flags.DEFINE_integer(
     'num_sites', 24,
     'Number of sites in the system.')
+flags.DEFINE_float(
+    'heisenberg_jx', 1.0,
+    'Jx value in Heisenberg Hamiltonian.')
 
 # Training parameters
 flags.DEFINE_integer(
@@ -38,7 +41,7 @@ flags.DEFINE_boolean(
     'Indicator to resotre variables from the latest checkpoint')
 
 flags.DEFINE_string(
-    'wavefunction_type', 'fully_connected',
+    'wavefunction_type', '',
     'Network architecture to train. Available architectures are listed in '
     'wavefunctions.WAVEFUNCTION_TYPES dict. and '
     'wavefunctions.build_wavefunction() function.')
@@ -98,6 +101,7 @@ def main(argv):
     file.write(str(hparams.to_proto()))
 
   bonds_file_path = os.path.join(FLAGS.checkpoint_dir, 'J.txt')
+  heisenberg_jx = FLAGS.heisenberg_jx
   if os.path.exists(bonds_file_path):
     heisenberg_data = np.genfromtxt(bonds_file_path, dtype=int)
     heisenberg_bonds = [[bond[0], bond[1]] for bond in heisenberg_data]
@@ -105,7 +109,8 @@ def main(argv):
     heisenberg_bonds = [(i, (i + 1) % n_sites) for i in range(0, n_sites)]
 
   wavefunction = wavefunctions.build_wavefunction(hparams)
-  hamiltonian = operators.HeisenbergHamiltonian(heisenberg_bonds, -1., 1.)
+  hamiltonian = operators.HeisenbergHamiltonian(heisenberg_bonds,
+                                                heisenberg_jx, 1.)
 
   wavefunction_optimizer = training.GROUND_STATE_OPTIMIZERS[FLAGS.optimizer]()
 
