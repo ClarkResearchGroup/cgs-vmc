@@ -119,7 +119,7 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
 
       nonlinearity='relu',
       output_activation='exp',
-      output_activation1='tanh',
+      output_activation1='tan',
       output_activation2='exp',
 
       # Monte Carlo parameters
