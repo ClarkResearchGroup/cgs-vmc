@@ -15,6 +15,8 @@ NONLINEARITIES = {
     'exp': tf.exp,
     'cos': tf.cos,
     'tan': tf.tan,
+    'tanh': tf.tanh,
+    'sigmoid': tf.sigmoid,
     'identity': tf.identity
 }
 
