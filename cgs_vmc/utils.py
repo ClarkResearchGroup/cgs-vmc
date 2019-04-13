@@ -83,8 +83,7 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
       basis_file_path='',
 
       wavefunction_type='',
-      wavefunction_type1='',
-      wavefunction_type2='',
+      composite_wavefunction_types=['', ''],
       wavefunction_optimizer_type='',
 
       # System parameters
@@ -119,8 +118,7 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
 
       nonlinearity='relu',
       output_activation='exp',
-      output_activation1='tanh',
-      output_activation2='exp',
+      composite_output_activations=['', ''],
 
       # Monte Carlo parameters
       num_equilibration_sweeps=100,
