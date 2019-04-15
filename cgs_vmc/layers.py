@@ -13,6 +13,10 @@ import tensorflow as tf
 NONLINEARITIES = {
     'relu': tf.nn.relu,
     'exp': tf.exp,
+    'cos': tf.cos,
+    'tan': tf.tan,
+    'tanh': tf.tanh,
+    'sigmoid': tf.sigmoid,
     'identity': tf.identity
 }
 

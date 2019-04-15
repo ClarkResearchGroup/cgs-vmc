@@ -23,6 +23,10 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
   System parameters:
     wavefunction_type: Wavefunction ansatz.
     wavefunction_optimizer_type: Wavefunction optimizer to use.
+    composite_wavefunction_types: A tuple of strings specifying individual
+        types of the composite wavefunction. e.g. To crease a sum of conv_1d
+        and fully_connected wavefunction use wavefunction_type='composite';
+        composite_wavefunction_types=('conv_1d', 'fully_connected').
     num_sites: Number of sites in the system.
     size_x: Dimension along x direction (used for reshaping for conv2d).
     size_y: Dimension along y direction (used for reshaping for conv2d).
@@ -52,6 +56,10 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
 
     nonlinearity: Nonlinearity to use for hidden activations.
     output_activation: Nonlinearity to use for the output (if included).
+    composite_output_activations: A tuple of strings specifying individual
+        typels of the output activation functions for each composite
+        wavefunction. e.g. To specify cos and exp for a sum of two wave
+        functions, use composite_output_activations=('cos', 'exp').
 
   Monte carlo paramteres:
     num_equilibration_sweeps: Number of markov chain sweeps for equilibration.
@@ -83,6 +91,7 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
       basis_file_path='',
 
       wavefunction_type='',
+      composite_wavefunction_types=('', ''),
       wavefunction_optimizer_type='',
 
       # System parameters
@@ -117,6 +126,7 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
 
       nonlinearity='relu',
       output_activation='exp',
+      composite_output_activations=('', ''),
 
       # Monte Carlo parameters
       num_equilibration_sweeps=100,

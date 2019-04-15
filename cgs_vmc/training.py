@@ -567,6 +567,8 @@ class LogOverlapImaginaryTimeSWO(WavefunctionOptimizer):
     for _ in range(hparams.num_equilibration_sweeps * hparams.num_sites):
       session.run(train_ops.mc_step)
 
+    if train_ops.update_wf_norm is not None:
+      session.run(train_ops.update_wf_norm)
     session.run(train_ops.update_supervisor)
     for _ in range(hparams.num_batches_per_epoch):
       for _ in range(hparams.num_monte_carlo_sweeps * hparams.num_sites):
