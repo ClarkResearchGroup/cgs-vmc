@@ -1175,7 +1175,7 @@ def build_wavefunction(
   if wavefunction_type in WAVEFUNCTION_TYPES:
     return WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams)
 
-  if hparams.wavefunction_type == 'sum':
+  if hparams.wavefunction_type in ('sum', 'diff', 'prod'):
     wf_type_a, wf_type_b = hparams.composite_wavefunction_types
     activation_a, activation_b = hparams.composite_output_activations
     wf_a_hparams = copy.copy(hparams)
@@ -1186,33 +1186,12 @@ def build_wavefunction(
     wf_b_hparams.set_hparam('wavefunction_type', wf_type_b)
     wf_a = WAVEFUNCTION_TYPES[wf_type_a].from_hparams(wf_a_hparams)
     wf_b = WAVEFUNCTION_TYPES[wf_type_b].from_hparams(wf_b_hparams)
-    return wf_a + wf_b
-
-  if hparams.wavefunction_type == 'diff':
-    wf_type_a, wf_type_b = hparams.composite_wavefunction_types
-    activation_a, activation_b = hparams.composite_output_activations
-    wf_a_hparams = copy.copy(hparams)
-    wf_b_hparams = copy.copy(hparams)
-    wf_a_hparams.set_hparam('output_activation', activation_a)
-    wf_a_hparams.set_hparam('wavefunction_type', wf_type_a)
-    wf_b_hparams.set_hparam('output_activation', activation_b)
-    wf_b_hparams.set_hparam('wavefunction_type', wf_type_b)
-    wf_a = WAVEFUNCTION_TYPES[wf_type_a].from_hparams(wf_a_hparams)
-    wf_b = WAVEFUNCTION_TYPES[wf_type_b].from_hparams(wf_b_hparams)
-    return wf_a - wf_b
-
-  if hparams.wavefunction_type == 'product':
-    wf_type_a, wf_type_b = hparams.composite_wavefunction_types
-    activation_a, activation_b = hparams.composite_output_activations
-    wf_a_hparams = copy.copy(hparams)
-    wf_b_hparams = copy.copy(hparams)
-    wf_a_hparams.set_hparam('output_activation', activation_a)
-    wf_a_hparams.set_hparam('wavefunction_type', wf_type_a)
-    wf_b_hparams.set_hparam('output_activation', activation_b)
-    wf_b_hparams.set_hparam('wavefunction_type', wf_type_b)
-    wf_a = WAVEFUNCTION_TYPES[wf_type_a].from_hparams(wf_a_hparams)
-    wf_b = WAVEFUNCTION_TYPES[wf_type_b].from_hparams(wf_b_hparams)
-    return wf_a * wf_b
+    if hparams.wavefunction_type == 'sum':
+      return wf_a + wf_b
+    if hparams.wavefunction_type == 'diff':
+      return wf_a - wf_b
+    if hparams.wavefunction_type == 'prod':
+      return wf_a * wf_b
 
   raise ValueError('Provided wavefunction_type is not registered.')
 
