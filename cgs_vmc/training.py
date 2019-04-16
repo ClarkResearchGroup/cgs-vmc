@@ -166,7 +166,7 @@ class SupervisedWavefunctionOptimizer():
     psi_target = target_wavefunction(configs)
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target * 500.) /
+        tf.squared_difference(psi, psi_target * np.sqrt(2**n_sites)) /
         (tf.square(tf.stop_gradient(psi)))
     )
     opt_v = wavefunction.get_trainable_variables()
@@ -211,6 +211,88 @@ class SupervisedWavefunctionOptimizer():
     session.run(train_ops.epoch_increment)
 
 
+class BasisIterationSWO():
+  """Supervised wavefunction optimizer.
+
+  Implements SWO based on L2 loss and minibatch sampling from the basis dataset.
+  """
+  def build_opt_ops(
+      self,
+      wavefunction: wavefunctions.Wavefunction,
+      target_wavefunction: wavefunctions.Wavefunction,
+      hparams: tf.contrib.training.HParams,
+      shared_resources: Dict[graph_builders.ResourceName, tf.Tensor],
+  ) -> NamedTuple:
+    """Adds wavefunction optimization ops to the graph.
+
+    Args:
+      wavefunction: Wavefunction model to optimize.
+      target_wavefunction: Wavefunction model that serves as a target state.
+      shared_resources: Resources sharable among different modules.
+      hparams: Hyperparameters of the optimization procedure.
+
+    Returns:
+      NamedTuple holding tensors needed to run a training epoch.
+    """
+    batch_size = hparams.batch_size
+    n_sites = hparams.num_sites
+
+    basis_dataset = tf.contrib.data.CsvDataset(
+        hparams.basis_file_path, [tf.float32 for _ in range(n_sites)],
+        header=False, field_delim=' ')
+    basis_dataset = basis_dataset.map(lambda *x: tf.convert_to_tensor(x))
+    shuffle_batch = scipy.special.binomi(n_sites, n_sites / 2)
+    basis_dataset = basis_dataset.shuffle(shuffle_batch)
+    basis_dataset = basis_dataset.batch(batch_size)
+    basis_dataset = basis_dataset.repeat()
+    config_iterator = basis_dataset.make_one_shot_iterator()
+    configs = config_iterator.get_next() * 2. - 1.
+
+    psi = wavefunction(configs)
+    psi_target = target_wavefunction(configs)
+
+    loss = tf.reduce_mean(
+        tf.squared_difference(psi, psi_target * np.sqrt(2 ** n_sites)))
+    opt_v = wavefunction.get_trainable_variables()
+    optimizer = create_sgd_optimizer(hparams)
+    train_step = optimizer.minimize(loss, var_list=opt_v)
+    num_epochs = graph_builders.get_or_create_num_epochs()
+    epoch_increment = tf.assign_add(num_epochs, 1)
+
+    train_ops = TrainOpsSupervised(
+        accumulate_gradients=None,
+        apply_gradients=train_step,
+        reset_gradients=None,
+        mc_step=None,
+        acc_rate=None,
+        metrics=loss,
+        update_wf_norm=None,
+        epoch_increment=epoch_increment,
+    )
+    return train_ops
+
+
+  def run_optimization_epoch(
+      self,
+      train_ops: NamedTuple,
+      session: tf.Session,
+      hparams: tf.contrib.training.HParams,
+      epoch_number: int,
+  ):
+    """Runs training epoch by executing `train_ops` in `session`.
+
+    Args:
+      train_ops: Training operations returned by `build_opt_ops` method.
+      session: Active session where to run a training epoch.
+      hparams: Hyperparameters of the optimization procedure.
+      epoch_number: Number of epoch.
+    """
+    del epoch_number  # not used by SupervisedWavefunctionOptimizer.
+    for _ in range(hparams.num_batches_per_epoch):
+      session.run(train_ops.apply_gradients)
+    session.run(train_ops.epoch_increment)
+
+
 class LogOverlapSWO():
   """Supervised wavefunction optimizer based on log(overlap) optimization.
 
@@ -242,10 +324,10 @@ class LogOverlapSWO():
     mc_step, acc_rate = graph_builders.get_monte_carlo_sampling(
         shared_resources, configs, wavefunction)
 
-    opt_v = wavefunction.get_trainable_variables()
     psi = wavefunction(configs)
     psi_target = target_wavefunction(configs)
     psi_no_grad = tf.stop_gradient(psi)
+    opt_v = wavefunction.get_trainable_variables()
     # Computation of L=log(overlap) gradient with respect to opt_v using
     # "grad(L) = <grad(log(psi))> - <grad(log(psi))*ratio> / <ratio>"
     # where ratio is the ratio of target and curren wave-function.
@@ -316,6 +398,104 @@ class LogOverlapSWO():
         session.run(train_ops.mc_step)
       session.run(train_ops.reset_gradients)
       session.run(train_ops.accumulate_gradients)
+      session.run(train_ops.apply_gradients)
+    session.run(train_ops.epoch_increment)
+
+
+class DualSamplingSWO():
+  """Supervised wavefunction optimizer based on SWO optimization.
+
+  Implements SWO with |psi|^2 sampling from both target and current states.
+  It uses L2(psi-phi) as the objective function. Currently the sampling bias
+  is not accounted for in the gradients. We see more stable performance using
+  such parameters for small system sizes.
+  """
+  # pylint: disable=too-many-locals
+  def build_opt_ops(
+      self,
+      wavefunction: wavefunctions.Wavefunction,
+      target_wavefunction: wavefunctions.Wavefunction,
+      hparams: tf.contrib.training.HParams,
+      shared_resources: Dict[graph_builders.ResourceName, tf.Tensor],
+  ) -> NamedTuple:
+    """Adds wavefunction optimization ops to the graph.
+
+    Args:
+      wavefunction: Wavefunction model to optimize.
+      target_wavefunction: Wavefunction model that serves as a target state.
+      shared_resources: Resources sharable among different modules.
+      hparams: Hyperparameters of the optimization procedure.
+
+    Returns:
+      NamedTuple holding tensors needed to run a training epoch.
+    """
+    batch_size = hparams.batch_size
+    n_sites = hparams.num_sites
+    psi_configs = graph_builders.get_configs(
+        shared_resources, batch_size // 2, n_sites)
+    target_configs = graph_builders.get_configs(
+        shared_resources, batch_size // 2, n_sites,
+        configs_id=graph_builders.ResourceName.TARGET_CONFIGS)
+
+    # Here we use explicit call to build separate MCMC sampling for two wf.
+    target_mc_step, target_acc_rate = graph_builders.build_monte_carlo_sampling(
+        target_configs, target_wavefunction)
+    psi_mc_step, psi_acc_rate = graph_builders.build_monte_carlo_sampling(
+        psi_configs, wavefunction)
+    mc_step = tf.group([psi_mc_step, target_mc_step])
+    acc_rate = tf.group([psi_acc_rate, target_acc_rate])
+
+    configs = tf.concat([psi_configs, target_configs], axis=0)
+    psi = wavefunction(configs)
+    psi_target = target_wavefunction(configs) * np.sqrt(2 ** n_sites)
+    psi_no_grad = tf.stop_gradient(psi)
+
+    # loss = tf.reduce_mean(  # A version of accounting for sampling bias.
+    #     tf.squared_difference(psi, psi_target) /
+    #     (tf.square(psi_no_grad) + tf.square(psi_target))
+    # )
+
+    loss = tf.reduce_mean(
+        tf.squared_difference(psi, psi_target)
+    )
+    opt_v = wavefunction.get_trainable_variables()
+    optimizer = create_sgd_optimizer(hparams)
+    train_step = optimizer.minimize(loss, var_list=opt_v)
+    num_epochs = graph_builders.get_or_create_num_epochs()
+    epoch_increment = tf.assign_add(num_epochs, 1)
+
+    train_ops = TrainOpsSupervised(
+        accumulate_gradients=None,
+        apply_gradients=train_step,
+        reset_gradients=None,
+        mc_step=mc_step,
+        acc_rate=acc_rate,
+        metrics=loss,
+        update_wf_norm=None,
+        epoch_increment=epoch_increment,
+    )
+    return train_ops
+
+
+  def run_optimization_epoch(
+      self,
+      train_ops: NamedTuple,
+      session: tf.Session,
+      hparams: tf.contrib.training.HParams,
+      epoch_number: int,
+  ):
+    """Runs training epoch by executing `train_ops` in `session`.
+
+    Args:
+      train_ops: Training operations returned by `build_opt_ops` method.
+      session: Active session where to run a training epoch.
+      hparams: Hyperparameters of the optimization procedure.
+      epoch_number: Number of epoch.
+    """
+    del epoch_number  # not used by SupervisedWavefunctionOptimizer.
+    for _ in range(hparams.num_batches_per_epoch):
+      for _ in range(hparams.num_monte_carlo_sweeps * hparams.num_sites):
+        session.run(train_ops.mc_step)
       session.run(train_ops.apply_gradients)
     session.run(train_ops.epoch_increment)
 
@@ -624,7 +804,7 @@ class ImaginaryTimeSWO(WavefunctionOptimizer):
 
     wf_omega = copy.deepcopy(wavefunction)  # building supervisor wavefunction.
     beta = tf.constant(hparams.time_evolution_beta, dtype=tf.float32)
-    beta2 = tf.constant(hparams.time_evolution_beta ** 2, dtype=tf.float32)
+    beta2 = tf.constant(hparams.time_evolution_befta ** 2, dtype=tf.float32)
     psi_omega = wf_omega(configs)
     h_psi_omega = hamiltonian.apply_in_place(wf_omega, configs, psi_omega)
     h_psi_omega_beta = h_psi_omega * beta
@@ -735,4 +915,6 @@ GROUND_STATE_OPTIMIZERS = {
 SUPERVISED_OPTIMIZERS = {
     'SWO': SupervisedWavefunctionOptimizer,
     'LogOverlapSWO': LogOverlapSWO,
+    'DualSamplingSWO': DualSamplingSWO,
+    'BasisIterSWO': BasisIterationSWO,
 }

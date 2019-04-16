@@ -16,6 +16,7 @@ import utils
 class ResourceName(enum.Enum):
   """Type of sharable resources, serves as key in `shared_resources`."""
   CONFIGS = 'CONFIGS'
+  TARGET_CONFIGS = 'TARGET_CONFIGS'
   TARGET_PSI = 'TARGET_PSI'
   TRAINING_PSI = 'TRAINING_PSI'
   MONTE_CARLO_SAMPLING = 'MONTE_CARLO_SAMPLING'
@@ -85,7 +86,7 @@ def build_monte_carlo_sampling(
   acceptance_count = tf.reduce_sum(updates_mask)
   mc_step = tf.assign_add(
       inputs, accepted_spin_down_update + accepted_spin_up_update)
-  return mc_step, acceptance_count
+  return tf.stop_gradient(mc_step), tf.stop_gradient(acceptance_count)
 
 
 def get_configs(
@@ -93,6 +94,7 @@ def get_configs(
     batch_size: int,
     n_sites: int,
     include: bool = True,
+    configs_id: ResourceName = ResourceName.CONFIGS
 ) -> tf.Tensor:
   """Retrieves or creates a variables to hold a batch of configurations.
 
@@ -101,6 +103,8 @@ def get_configs(
     batch_size: Number of configurations in the batch.
     n_sites: Number of sites in the system.
     include: Boolean indicating whether to update `shared_resources`.
+    configs_id: Type of configurations requested. This parameter is used to
+        create buffers for different wave functions.
 
   Returns:
     Non trainable variable of shape [batch_size, n_sites].
@@ -108,16 +112,16 @@ def get_configs(
   Raises:
     ValueError: Size of existing variable does not match.
   """
-  if ResourceName.CONFIGS in shared_resources:
-    configs = shared_resources[ResourceName.CONFIGS]
+  if configs_id in shared_resources:
+    configs = shared_resources[configs_id]
     if configs.shape.as_list() != [batch_size, n_sites]:
       raise ValueError('Size of existing variable does not match.')
     return configs
 
   init = utils.random_configurations(n_sites, batch_size)
-  configs = tf.get_variable(name='configs', initializer=init, trainable=False)
+  configs = tf.get_variable(str(configs_id), initializer=init, trainable=False)
   if include:
-    shared_resources[ResourceName.CONFIGS] = configs
+    shared_resources[configs_id] = configs
   return configs
 
 
