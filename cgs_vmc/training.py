@@ -16,6 +16,7 @@ import copy
 from typing import Dict, NamedTuple
 
 import numpy as np
+import scipy
 import tensorflow as tf
 
 import wavefunctions
@@ -234,6 +235,7 @@ class BasisIterationSWO():
     Returns:
       NamedTuple holding tensors needed to run a training epoch.
     """
+    del shared_resources  # Not used by BasisIterationSWO.
     batch_size = hparams.batch_size
     n_sites = hparams.num_sites
 
@@ -448,9 +450,10 @@ class DualSamplingSWO():
     configs = tf.concat([psi_configs, target_configs], axis=0)
     psi = wavefunction(configs)
     psi_target = target_wavefunction(configs) * np.sqrt(2 ** n_sites)
-    psi_no_grad = tf.stop_gradient(psi)
 
-    # loss = tf.reduce_mean(  # A version of accounting for sampling bias.
+    # # A version of accounting for sampling bias.
+    # psi_no_grad = tf.stop_gradient(psi)
+    # loss = tf.reduce_mean(
     #     tf.squared_difference(psi, psi_target) /
     #     (tf.square(psi_no_grad) + tf.square(psi_target))
     # )
