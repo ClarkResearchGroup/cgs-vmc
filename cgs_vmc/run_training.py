@@ -21,6 +21,9 @@ import utils
 flags.DEFINE_string(
     'checkpoint_dir', '',
     'Full path to the checkpoint directory.')
+flags.DEFINE_string(
+    'bond_file', '',
+    'Bond file that specifies the bond connection of the Hamiltonian.')
 flags.DEFINE_integer(
     'num_sites', 24,
     'Number of sites in the system.')
@@ -74,9 +77,9 @@ def main(argv):
   """Runs wavefunction optimization.
 
   This pipeline optimizes wavefunction specified in flags on a Marshal sign
-  included Heisenberg model. Bonds should be specified in the file J.txt in
-  checkpoint directory, otherwise will default to 1D PBC system. For other
-  tunable parameters see flags description.
+  included Heisenberg model. Bonds should be specified in the bond_file
+  (e.g.J.txt) in checkpoint directory, otherwise will default to 1D PBC
+  system. For other tunable parameters see flags description.
   """
   del argv  # Not used.
   n_sites = FLAGS.num_sites
@@ -100,7 +103,7 @@ def main(argv):
   with tf.gfile.GFile(hparams_path, 'w') as file:
     file.write(str(hparams.to_proto()))
 
-  bonds_file_path = os.path.join(FLAGS.checkpoint_dir, 'J.txt')
+  bonds_file_path = os.path.join(FLAGS.checkpoint_dir, FLAGS.bond_file)
   heisenberg_jx = FLAGS.heisenberg_jx
   if os.path.exists(bonds_file_path):
     heisenberg_data = np.genfromtxt(bonds_file_path, dtype=int)
