@@ -243,7 +243,7 @@ class BasisIterationSWO():
         hparams.basis_file_path, [tf.float32 for _ in range(n_sites)],
         header=False, field_delim=' ')
     basis_dataset = basis_dataset.map(lambda *x: tf.convert_to_tensor(x))
-    shuffle_batch = scipy.special.binomi(n_sites, n_sites / 2)
+    shuffle_batch = scipy.special.binom(n_sites, n_sites / 2)
     basis_dataset = basis_dataset.shuffle(shuffle_batch)
     basis_dataset = basis_dataset.batch(batch_size)
     basis_dataset = basis_dataset.repeat()
@@ -809,7 +809,7 @@ class ImaginaryTimeSWO(WavefunctionOptimizer):
 
     wf_omega = copy.deepcopy(wavefunction)  # building supervisor wavefunction.
     beta = tf.constant(hparams.time_evolution_beta, dtype=tf.float32)
-    beta2 = tf.constant(hparams.time_evolution_befta ** 2, dtype=tf.float32)
+    beta2 = tf.constant(hparams.time_evolution_beta ** 2, dtype=tf.float32)
     psi_omega = wf_omega(configs)
     h_psi_omega = hamiltonian.apply_in_place(wf_omega, configs, psi_omega)
     h_psi_omega_beta = h_psi_omega * beta
