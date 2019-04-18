@@ -36,7 +36,7 @@ flags.DEFINE_boolean(
     'Indicator to resotre variables from the latest checkpoint')
 
 flags.DEFINE_string(
-    'wavefunction_type', 'fully_connected',
+    'wavefunction_type', '',
     'Network architecture to train. Available architectures are listed in '
     'wavefunctions.WAVEFUNCTION_TYPES dict. and '
     'wavefunctions.build_wavefunction() function.')
