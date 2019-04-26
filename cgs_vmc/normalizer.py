@@ -9,11 +9,13 @@ of supervised training."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from typing import Dict, Any
 
 import tensorflow as tf
 import numpy as np
 
 import wavefunctions
+import graph_builders
 
 
 def normalize_wavefunction(
@@ -33,7 +35,7 @@ def normalize_wavefunction(
       wavefunction: Wavefunction model to normalize.
       system_configs: Configurations on which system can be evaluated.
       update_config: Operation that samples new `system_configs`.
-      session: Active session in which th wavefunction is normalized.
+      session: Active session in which the wavefunction is normalized.
       value: What is the max value to aim for.
       normalization_iterations: Number of batches to process for normalization.
   """
@@ -47,3 +49,73 @@ def normalize_wavefunction(
   for _ in range(normalization_iterations):
     session.run(update_config)
     session.run(update_norm_on_batch)
+
+
+def build_normalization_ops(
+    wavefunction: wavefunctions.Wavefunction,
+    hparams: tf.contrib.training.HParams,
+    shared_resources: Dict[graph_builders.ResourceName, tf.Tensor],
+) -> Any:
+  """Generates operations that the fix range of wf amplitudes.
+
+  Construct computational graph to normalize the wave function magnitude by
+  dividing the largest magnitude from monte_carlo sampling.
+
+  Args:
+      wavefunction: Wavefunction model to normalize.
+      hparams: Class holding hyperparameters of the wavefunction ansatzs.
+      shared_resources: Resources sharable among different modules.
+
+  Returns:
+      Max magnitude of wave function from monte carlo sampling and monte carlo
+      step mc_step.
+  """
+
+  batch_size = hparams.batch_size
+  n_sites = hparams.num_sites
+  configs = graph_builders.get_configs(shared_resources, batch_size, n_sites)
+  mc_step = graph_builders.get_monte_carlo_sampling(
+      shared_resources, configs, wavefunction)[0]
+  psi_value = wavefunction(configs)
+  max_value = tf.reduce_max(tf.square(psi_value))
+
+  return max_value, mc_step
+
+
+def run_normalization_ops(
+    max_value: Any,
+    mc_step: tf.Tensor,
+    wavefunction: wavefunctions.Wavefunction,
+    session: tf.Session,
+    hparams: tf.contrib.training.HParams,
+) -> wavefunctions.Wavefunction:
+  """Executes operations that the fix range of wf amplitudes.
+
+  Run computational graph to normalize the wave function magnitude by
+  dividing the largest magnitude from monte_carlo sampling.
+
+  Args:
+      max_value: Max value of wavefunction magnitude square estimated,
+      mc_step: Monte Carlo step,
+      wavefunction: Wavefunction model to normalize.
+      session: Active session in which the wavefunction is normalized.
+      hparams: Class holding hyperparameters of the wavefunction ansatzs.
+
+  Returns:
+      Wavefunction normalized by the max magnitude from monte carlo sampling
+      and monte carlo.
+  """
+
+  n_sites = hparams.num_sites
+  normalization = hparams.normalization
+
+  if normalization == 'monte_carlo':
+    current_max = 0.
+    for _ in range(hparams.num_equilibration_sweeps * n_sites):
+      session.run(mc_step)
+      current_max = max(current_max, session.run(max_value))
+    scale = 1.0 / np.sqrt(current_max)
+  elif normalization == 'space_scale':
+    scale = np.sqrt(2 ** n_sites)
+
+  return wavefunction * scale

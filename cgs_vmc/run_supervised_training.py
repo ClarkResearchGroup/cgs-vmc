@@ -14,6 +14,7 @@ import evaluation
 import training
 import wavefunctions
 import utils
+import normalizer
 
 # System parameters
 flags.DEFINE_string(
@@ -88,6 +89,7 @@ def main(argv):
   hparams.set_hparam('basis_file_path', FLAGS.basis_file_path)
   hparams.set_hparam('num_epochs', FLAGS.num_epochs)
   hparams.set_hparam('wavefunction_type', FLAGS.wavefunction_type)
+  hparams.set_hparam('wavefunction_optimizer_type', FLAGS.optimizer)
   hparams.parse(FLAGS.hparams)
   hparams_path = os.path.join(hparams.checkpoint_dir, 'hparams.pbtxt')
 
@@ -116,6 +118,8 @@ def main(argv):
   }
 
   train_ops = wavefunction_optimizer.build_opt_ops(**graph_building_args)
+  max_value, mc_step = normalizer.build_normalization_ops(
+      target_wavefunction, hparams, shared_resources)
 
   session = tf.Session()
   init = tf.global_variables_initializer()
@@ -127,6 +131,9 @@ def main(argv):
   target_saver.restore(session, supervisor_checkpoint)
   checkpoint_saver = tf.train.Saver(
       wavefunction.get_trainable_variables(), max_to_keep=5)
+
+  target_wavefunction = normalizer.run_normalization_ops(
+      max_value, mc_step, target_wavefunction, session, hparams)
 
   if FLAGS.resume_training:
     latest_checkpoint = tf.train.latest_checkpoint(hparams.checkpoint_dir)

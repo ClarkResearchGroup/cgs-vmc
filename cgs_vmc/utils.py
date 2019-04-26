@@ -70,6 +70,10 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
     batch_size: Number of configurations in the batch (num of markov chains).
     num_batches_per_epoch: Number of batches sampled per epoch.
     time_evolution_beta: Imaginary time evolution step for ITSWO.
+    normalization: normalization method of target wavefunction in supervised
+        training. 'monte_carlo' for normalizing by the max of wavefunction
+        magnitude estimated by monte_carlo. 'space_scale' for normalizing by
+        the square root of 2**num_sites.
     learning_rates: Learning rates used for SGD
     learning_rate_stops: Epoch stops when learning rate is adjusted.
     optimizer: SGD optimizer used to training.
@@ -137,6 +141,7 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
       batch_size=200,
       num_batches_per_epoch=50,
       time_evolution_beta=0.12,
+      normalization='monte_carlo',
 
       learning_rates=[1e-3, 1e-4, 2e-5, 1e-5],
       learning_rate_stops=[300, 600, 1000],

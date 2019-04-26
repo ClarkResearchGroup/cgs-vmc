@@ -167,7 +167,7 @@ class SupervisedWavefunctionOptimizer():
     psi_target = target_wavefunction(configs)
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target * np.sqrt(2**n_sites)) /
+        tf.squared_difference(psi, psi_target) /
         (tf.square(tf.stop_gradient(psi)))
     )
     opt_v = wavefunction.get_trainable_variables()
@@ -254,7 +254,7 @@ class BasisIterationSWO():
     psi_target = target_wavefunction(configs)
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target * np.sqrt(2 ** n_sites)))
+        tf.squared_difference(psi, psi_target))
     opt_v = wavefunction.get_trainable_variables()
     optimizer = create_sgd_optimizer(hparams)
     train_step = optimizer.minimize(loss, var_list=opt_v)
@@ -449,7 +449,7 @@ class DualSamplingSWO():
 
     configs = tf.concat([psi_configs, target_configs], axis=0)
     psi = wavefunction(configs)
-    psi_target = target_wavefunction(configs) * np.sqrt(2 ** n_sites)
+    psi_target = target_wavefunction(configs)
 
     # # A version of accounting for sampling bias.
     # psi_no_grad = tf.stop_gradient(psi)
