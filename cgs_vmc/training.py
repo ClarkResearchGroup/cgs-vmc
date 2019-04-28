@@ -167,7 +167,7 @@ class SupervisedWavefunctionOptimizer():
     psi_target = target_wavefunction(configs)
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target) /
+        tf.squared_difference(psi, psi_target * hparams.scale) /
         (tf.square(tf.stop_gradient(psi)))
     )
     opt_v = wavefunction.get_trainable_variables()
@@ -195,7 +195,7 @@ class SupervisedWavefunctionOptimizer():
       session: tf.Session,
       hparams: tf.contrib.training.HParams,
       epoch_number: int,
-  ):
+  )-> np.float32:
     """Runs training epoch by executing `train_ops` in `session`.
 
     Args:
@@ -203,6 +203,9 @@ class SupervisedWavefunctionOptimizer():
       session: Active session where to run a training epoch.
       hparams: Hyperparameters of the optimization procedure.
       epoch_number: Number of epoch.
+
+    Returns:
+      Current wavefunctin fidelity loss estimate.
     """
     del epoch_number  # not used by SupervisedWavefunctionOptimizer.
     for _ in range(hparams.num_batches_per_epoch):
@@ -210,6 +213,8 @@ class SupervisedWavefunctionOptimizer():
         session.run(train_ops.mc_step)
       session.run(train_ops.apply_gradients)
     session.run(train_ops.epoch_increment)
+    loss = session.run(train_ops.metrics)
+    return loss
 
 
 class BasisIterationSWO():
@@ -254,7 +259,7 @@ class BasisIterationSWO():
     psi_target = target_wavefunction(configs)
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target))
+        tf.squared_difference(psi, psi_target * hparams.scale))
     opt_v = wavefunction.get_trainable_variables()
     optimizer = create_sgd_optimizer(hparams)
     train_step = optimizer.minimize(loss, var_list=opt_v)
@@ -280,7 +285,7 @@ class BasisIterationSWO():
       session: tf.Session,
       hparams: tf.contrib.training.HParams,
       epoch_number: int,
-  ):
+  )-> np.float32:
     """Runs training epoch by executing `train_ops` in `session`.
 
     Args:
@@ -288,11 +293,16 @@ class BasisIterationSWO():
       session: Active session where to run a training epoch.
       hparams: Hyperparameters of the optimization procedure.
       epoch_number: Number of epoch.
+
+    Returns:
+      Current wavefunctin fidelity loss estimate.
     """
     del epoch_number  # not used by SupervisedWavefunctionOptimizer.
     for _ in range(hparams.num_batches_per_epoch):
       session.run(train_ops.apply_gradients)
     session.run(train_ops.epoch_increment)
+    loss = session.run(train_ops.metrics)
+    return loss
 
 
 class LogOverlapSWO():
@@ -327,7 +337,7 @@ class LogOverlapSWO():
         shared_resources, configs, wavefunction)
 
     psi = wavefunction(configs)
-    psi_target = target_wavefunction(configs)
+    psi_target = target_wavefunction(configs) * hparams.scale
     psi_no_grad = tf.stop_gradient(psi)
     opt_v = wavefunction.get_trainable_variables()
     # Computation of L=log(overlap) gradient with respect to opt_v using
@@ -459,7 +469,7 @@ class DualSamplingSWO():
     # )
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target)
+        tf.squared_difference(psi, psi_target * hparams.scale)
     )
     opt_v = wavefunction.get_trainable_variables()
     optimizer = create_sgd_optimizer(hparams)
@@ -486,7 +496,7 @@ class DualSamplingSWO():
       session: tf.Session,
       hparams: tf.contrib.training.HParams,
       epoch_number: int,
-  ):
+  )-> np.float32:
     """Runs training epoch by executing `train_ops` in `session`.
 
     Args:
@@ -494,6 +504,9 @@ class DualSamplingSWO():
       session: Active session where to run a training epoch.
       hparams: Hyperparameters of the optimization procedure.
       epoch_number: Number of epoch.
+
+    Returns:
+      Current wavefunctin fidelity loss estimate.
     """
     del epoch_number  # not used by SupervisedWavefunctionOptimizer.
     for _ in range(hparams.num_batches_per_epoch):
@@ -501,6 +514,8 @@ class DualSamplingSWO():
         session.run(train_ops.mc_step)
       session.run(train_ops.apply_gradients)
     session.run(train_ops.epoch_increment)
+    loss = session.run(train_ops.metrics)
+    return loss
 
 
 class EnergyGradientOptimizer(WavefunctionOptimizer):

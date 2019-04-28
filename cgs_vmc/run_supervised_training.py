@@ -14,7 +14,6 @@ import evaluation
 import training
 import wavefunctions
 import utils
-import normalizer
 
 # System parameters
 flags.DEFINE_string(
@@ -118,8 +117,6 @@ def main(argv):
   }
 
   train_ops = wavefunction_optimizer.build_opt_ops(**graph_building_args)
-  max_value, mc_step = normalizer.build_normalization_ops(
-      target_wavefunction, hparams, shared_resources)
 
   session = tf.Session()
   init = tf.global_variables_initializer()
@@ -132,20 +129,23 @@ def main(argv):
   checkpoint_saver = tf.train.Saver(
       wavefunction.get_trainable_variables(), max_to_keep=5)
 
-  target_wavefunction = normalizer.run_normalization_ops(
-      max_value, mc_step, target_wavefunction, session, hparams)
-
   if FLAGS.resume_training:
     latest_checkpoint = tf.train.latest_checkpoint(hparams.checkpoint_dir)
     checkpoint_saver.restore(session, latest_checkpoint)
 
+  training_metrics_file = os.path.join(hparams.checkpoint_dir, \
+        'supervised_loss.txt')
   for epoch_number in range(FLAGS.num_epochs):
-    wavefunction_optimizer.run_optimization_epoch(
+    metrics_record = wavefunction_optimizer.run_optimization_epoch(
         train_ops, session, hparams, epoch_number)
     if epoch_number % FLAGS.checkpoint_frequency == 0:
       checkpoint_name = 'model_after_{}_epochs'.format(epoch_number)
       save_path = os.path.join(hparams.checkpoint_dir, checkpoint_name)
       checkpoint_saver.save(session, save_path)
+
+    metrics_file_output = open(training_metrics_file, 'a')
+    metrics_file_output.write('{}\n'.format(metrics_record))
+    metrics_file_output.close()
 
   if FLAGS.generate_vectors:
     vector_generator = evaluation.VectorWavefunctionEvaluator()
