@@ -70,7 +70,8 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
     batch_size: Number of configurations in the batch (num of markov chains).
     num_batches_per_epoch: Number of batches sampled per epoch.
     time_evolution_beta: Imaginary time evolution step for ITSWO.
-    learning_rates: Learning rates used for SGD
+    scale: Scale factor for wavefunction magnitude in supervised learning.
+    learning_rates: Learning rates used for SGD.
     learning_rate_stops: Epoch stops when learning rate is adjusted.
     optimizer: SGD optimizer used to training.
     beta2: Second momenta for optimizer
@@ -137,6 +138,7 @@ def create_hparams(**kwargs: Any) -> tf.contrib.training.HParams:
       batch_size=200,
       num_batches_per_epoch=50,
       time_evolution_beta=0.12,
+      scale=1.0,
 
       learning_rates=[1e-3, 1e-4, 2e-5, 1e-5],
       learning_rate_stops=[300, 600, 1000],

@@ -1142,10 +1142,12 @@ class GraphConvNetwork(Wavefunction):
       name: str = ''
   ) -> 'Wavefunction':
     """Constructs an instance of a class from hparams."""
+    dir_path = hparams.checkpoint_dir
+    adjacency_list_path = os.path.join(dir_path, hparams.adjacency_list_path)
     gnn_params = {
         'num_layers': hparams.num_conv_layers,
         'num_filters': hparams.num_conv_filters,
-        'adj': np.genfromtxt(hparams.adjacency_list_path, dtype=int),
+        'adj': np.genfromtxt(adjacency_list_path, dtype=int),
         'output_activation': layers.NONLINEARITIES[hparams.output_activation],
         'nonlinearity': layers.NONLINEARITIES[hparams.nonlinearity],
     }

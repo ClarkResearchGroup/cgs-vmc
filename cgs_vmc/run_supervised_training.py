@@ -36,7 +36,7 @@ flags.DEFINE_boolean(
     'Indicator to resotre variables from the latest checkpoint')
 
 flags.DEFINE_string(
-    'wavefunction_type', 'fully_connected',
+    'wavefunction_type', '',
     'Network architecture to train. Available architectures are listed in '
     'wavefunctions.WAVEFUNCTION_TYPES dict. and '
     'wavefunctions.build_wavefunction() function.')
@@ -88,6 +88,7 @@ def main(argv):
   hparams.set_hparam('basis_file_path', FLAGS.basis_file_path)
   hparams.set_hparam('num_epochs', FLAGS.num_epochs)
   hparams.set_hparam('wavefunction_type', FLAGS.wavefunction_type)
+  hparams.set_hparam('wavefunction_optimizer_type', FLAGS.optimizer)
   hparams.parse(FLAGS.hparams)
   hparams_path = os.path.join(hparams.checkpoint_dir, 'hparams.pbtxt')
 
@@ -132,13 +133,19 @@ def main(argv):
     latest_checkpoint = tf.train.latest_checkpoint(hparams.checkpoint_dir)
     checkpoint_saver.restore(session, latest_checkpoint)
 
+  training_metrics_file = os.path.join(
+      hparams.checkpoint_dir, 'supervised_loss.txt')
   for epoch_number in range(FLAGS.num_epochs):
-    wavefunction_optimizer.run_optimization_epoch(
+    metrics_record = wavefunction_optimizer.run_optimization_epoch(
         train_ops, session, hparams, epoch_number)
     if epoch_number % FLAGS.checkpoint_frequency == 0:
       checkpoint_name = 'model_after_{}_epochs'.format(epoch_number)
       save_path = os.path.join(hparams.checkpoint_dir, checkpoint_name)
       checkpoint_saver.save(session, save_path)
+
+    metrics_file_output = open(training_metrics_file, 'a')
+    metrics_file_output.write('{}\n'.format(metrics_record))
+    metrics_file_output.close()
 
   if FLAGS.generate_vectors:
     vector_generator = evaluation.VectorWavefunctionEvaluator()

@@ -164,10 +164,10 @@ class SupervisedWavefunctionOptimizer():
         shared_resources, configs, wavefunction)
 
     psi = wavefunction(configs)
-    psi_target = target_wavefunction(configs)
+    psi_target = target_wavefunction(configs) * hparams.scale
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target * np.sqrt(2**n_sites)) /
+        tf.squared_difference(psi, psi_target) /
         (tf.square(tf.stop_gradient(psi)))
     )
     opt_v = wavefunction.get_trainable_variables()
@@ -195,7 +195,7 @@ class SupervisedWavefunctionOptimizer():
       session: tf.Session,
       hparams: tf.contrib.training.HParams,
       epoch_number: int,
-  ):
+  )-> np.float32:
     """Runs training epoch by executing `train_ops` in `session`.
 
     Args:
@@ -203,13 +203,19 @@ class SupervisedWavefunctionOptimizer():
       session: Active session where to run a training epoch.
       hparams: Hyperparameters of the optimization procedure.
       epoch_number: Number of epoch.
+
+    Returns:
+      Current wavefunctin fidelity loss estimate.
     """
     del epoch_number  # not used by SupervisedWavefunctionOptimizer.
+    loss_values = []
     for _ in range(hparams.num_batches_per_epoch):
       for _ in range(hparams.num_monte_carlo_sweeps * hparams.num_sites):
         session.run(train_ops.mc_step)
-      session.run(train_ops.apply_gradients)
+      _, loss = session.run([train_ops.apply_gradients, train_ops.metrics])
+      loss_values.append(loss)
     session.run(train_ops.epoch_increment)
+    return np.mean(loss_values)
 
 
 class BasisIterationSWO():
@@ -243,7 +249,7 @@ class BasisIterationSWO():
         hparams.basis_file_path, [tf.float32 for _ in range(n_sites)],
         header=False, field_delim=' ')
     basis_dataset = basis_dataset.map(lambda *x: tf.convert_to_tensor(x))
-    shuffle_batch = scipy.special.binomi(n_sites, n_sites / 2)
+    shuffle_batch = scipy.special.binom(n_sites, n_sites / 2)
     basis_dataset = basis_dataset.shuffle(shuffle_batch)
     basis_dataset = basis_dataset.batch(batch_size)
     basis_dataset = basis_dataset.repeat()
@@ -251,10 +257,10 @@ class BasisIterationSWO():
     configs = config_iterator.get_next() * 2. - 1.
 
     psi = wavefunction(configs)
-    psi_target = target_wavefunction(configs)
+    psi_target = target_wavefunction(configs) * hparams.scale
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target * np.sqrt(2 ** n_sites)))
+        tf.squared_difference(psi, psi_target))
     opt_v = wavefunction.get_trainable_variables()
     optimizer = create_sgd_optimizer(hparams)
     train_step = optimizer.minimize(loss, var_list=opt_v)
@@ -280,7 +286,7 @@ class BasisIterationSWO():
       session: tf.Session,
       hparams: tf.contrib.training.HParams,
       epoch_number: int,
-  ):
+  )-> np.float32:
     """Runs training epoch by executing `train_ops` in `session`.
 
     Args:
@@ -288,11 +294,17 @@ class BasisIterationSWO():
       session: Active session where to run a training epoch.
       hparams: Hyperparameters of the optimization procedure.
       epoch_number: Number of epoch.
+
+    Returns:
+      Current wavefunctin fidelity loss estimate.
     """
     del epoch_number  # not used by SupervisedWavefunctionOptimizer.
+    loss_values = []
     for _ in range(hparams.num_batches_per_epoch):
-      session.run(train_ops.apply_gradients)
+      _, loss = session.run([train_ops.apply_gradients, train_ops.metrics])
+      loss_values.append(loss)
     session.run(train_ops.epoch_increment)
+    return np.mean(loss_values)
 
 
 class LogOverlapSWO():
@@ -449,7 +461,7 @@ class DualSamplingSWO():
 
     configs = tf.concat([psi_configs, target_configs], axis=0)
     psi = wavefunction(configs)
-    psi_target = target_wavefunction(configs) * np.sqrt(2 ** n_sites)
+    psi_target = target_wavefunction(configs) * hparams.scale
 
     # # A version of accounting for sampling bias.
     # psi_no_grad = tf.stop_gradient(psi)
@@ -486,7 +498,7 @@ class DualSamplingSWO():
       session: tf.Session,
       hparams: tf.contrib.training.HParams,
       epoch_number: int,
-  ):
+  )-> np.float32:
     """Runs training epoch by executing `train_ops` in `session`.
 
     Args:
@@ -494,13 +506,19 @@ class DualSamplingSWO():
       session: Active session where to run a training epoch.
       hparams: Hyperparameters of the optimization procedure.
       epoch_number: Number of epoch.
+
+    Returns:
+      Current wavefunctin fidelity loss estimate.
     """
     del epoch_number  # not used by SupervisedWavefunctionOptimizer.
+    loss_values = []
     for _ in range(hparams.num_batches_per_epoch):
       for _ in range(hparams.num_monte_carlo_sweeps * hparams.num_sites):
         session.run(train_ops.mc_step)
-      session.run(train_ops.apply_gradients)
+      _, loss = session.run([train_ops.apply_gradients, train_ops.metrics])
+      loss_values.append(loss)
     session.run(train_ops.epoch_increment)
+    return np.mean(loss_values)
 
 
 class EnergyGradientOptimizer(WavefunctionOptimizer):
@@ -809,7 +827,7 @@ class ImaginaryTimeSWO(WavefunctionOptimizer):
 
     wf_omega = copy.deepcopy(wavefunction)  # building supervisor wavefunction.
     beta = tf.constant(hparams.time_evolution_beta, dtype=tf.float32)
-    beta2 = tf.constant(hparams.time_evolution_befta ** 2, dtype=tf.float32)
+    beta2 = tf.constant(hparams.time_evolution_beta ** 2, dtype=tf.float32)
     psi_omega = wf_omega(configs)
     h_psi_omega = hamiltonian.apply_in_place(wf_omega, configs, psi_omega)
     h_psi_omega_beta = h_psi_omega * beta
