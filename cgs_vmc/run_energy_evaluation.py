@@ -26,8 +26,8 @@ flags.DEFINE_string(
     'Full path to the checkpoint directory.')
 
 flags.DEFINE_string(
-    'bond_file', '',
-    'Bond file that specifies the bond connection of the Hamiltonian.')
+    'bonds_file', '',
+    'Name of the file that contains bonds of the Hamiltonian.')
 
 flags.DEFINE_string(
     'output_file', '',
@@ -52,7 +52,7 @@ def main(argv):
   n_sites = hparams.num_sites
 
   # TODO(dkochkov) make a more comprehensive Hamiltonian construction method
-  bonds_file_path = os.path.join(FLAGS.checkpoint_dir, FLAGS.bond_file)
+  bonds_file_path = os.path.join(FLAGS.checkpoint_dir, FLAGS.bonds_file)
   heisenberg_jx = FLAGS.heisenberg_jx
   if os.path.exists(bonds_file_path):
     heisenberg_data = np.genfromtxt(bonds_file_path, dtype=int)

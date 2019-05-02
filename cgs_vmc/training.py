@@ -164,10 +164,10 @@ class SupervisedWavefunctionOptimizer():
         shared_resources, configs, wavefunction)
 
     psi = wavefunction(configs)
-    psi_target = target_wavefunction(configs)
+    psi_target = target_wavefunction(configs) * hparams.scale
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target * hparams.scale) /
+        tf.squared_difference(psi, psi_target) /
         (tf.square(tf.stop_gradient(psi)))
     )
     opt_v = wavefunction.get_trainable_variables()
@@ -208,13 +208,14 @@ class SupervisedWavefunctionOptimizer():
       Current wavefunctin fidelity loss estimate.
     """
     del epoch_number  # not used by SupervisedWavefunctionOptimizer.
+    loss_values = []
     for _ in range(hparams.num_batches_per_epoch):
       for _ in range(hparams.num_monte_carlo_sweeps * hparams.num_sites):
         session.run(train_ops.mc_step)
-      session.run(train_ops.apply_gradients)
+      _, loss = session.run([train_ops.apply_gradients, train_ops.metrics])
+      loss_values.append(loss)
     session.run(train_ops.epoch_increment)
-    loss = session.run(train_ops.metrics)
-    return loss
+    return np.mean(loss_values)
 
 
 class BasisIterationSWO():
@@ -256,10 +257,10 @@ class BasisIterationSWO():
     configs = config_iterator.get_next() * 2. - 1.
 
     psi = wavefunction(configs)
-    psi_target = target_wavefunction(configs)
+    psi_target = target_wavefunction(configs) * hparams.scale
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target * hparams.scale))
+        tf.squared_difference(psi, psi_target))
     opt_v = wavefunction.get_trainable_variables()
     optimizer = create_sgd_optimizer(hparams)
     train_step = optimizer.minimize(loss, var_list=opt_v)
@@ -298,11 +299,12 @@ class BasisIterationSWO():
       Current wavefunctin fidelity loss estimate.
     """
     del epoch_number  # not used by SupervisedWavefunctionOptimizer.
+    loss_values = []
     for _ in range(hparams.num_batches_per_epoch):
-      session.run(train_ops.apply_gradients)
+      _, loss = session.run([train_ops.apply_gradients, train_ops.metrics])
+      loss_values.append(loss)
     session.run(train_ops.epoch_increment)
-    loss = session.run(train_ops.metrics)
-    return loss
+    return np.mean(loss_values)
 
 
 class LogOverlapSWO():
@@ -337,7 +339,7 @@ class LogOverlapSWO():
         shared_resources, configs, wavefunction)
 
     psi = wavefunction(configs)
-    psi_target = target_wavefunction(configs) * hparams.scale
+    psi_target = target_wavefunction(configs)
     psi_no_grad = tf.stop_gradient(psi)
     opt_v = wavefunction.get_trainable_variables()
     # Computation of L=log(overlap) gradient with respect to opt_v using
@@ -459,7 +461,7 @@ class DualSamplingSWO():
 
     configs = tf.concat([psi_configs, target_configs], axis=0)
     psi = wavefunction(configs)
-    psi_target = target_wavefunction(configs)
+    psi_target = target_wavefunction(configs) * hparams.scale
 
     # # A version of accounting for sampling bias.
     # psi_no_grad = tf.stop_gradient(psi)
@@ -469,7 +471,7 @@ class DualSamplingSWO():
     # )
 
     loss = tf.reduce_mean(
-        tf.squared_difference(psi, psi_target * hparams.scale)
+        tf.squared_difference(psi, psi_target)
     )
     opt_v = wavefunction.get_trainable_variables()
     optimizer = create_sgd_optimizer(hparams)
@@ -509,13 +511,14 @@ class DualSamplingSWO():
       Current wavefunctin fidelity loss estimate.
     """
     del epoch_number  # not used by SupervisedWavefunctionOptimizer.
+    loss_values = []
     for _ in range(hparams.num_batches_per_epoch):
       for _ in range(hparams.num_monte_carlo_sweeps * hparams.num_sites):
         session.run(train_ops.mc_step)
-      session.run(train_ops.apply_gradients)
+      _, loss = session.run([train_ops.apply_gradients, train_ops.metrics])
+      loss_values.append(loss)
     session.run(train_ops.epoch_increment)
-    loss = session.run(train_ops.metrics)
-    return loss
+    return np.mean(loss_values)
 
 
 class EnergyGradientOptimizer(WavefunctionOptimizer):

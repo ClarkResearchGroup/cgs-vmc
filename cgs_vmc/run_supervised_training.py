@@ -133,8 +133,8 @@ def main(argv):
     latest_checkpoint = tf.train.latest_checkpoint(hparams.checkpoint_dir)
     checkpoint_saver.restore(session, latest_checkpoint)
 
-  training_metrics_file = os.path.join(hparams.checkpoint_dir, \
-        'supervised_loss.txt')
+  training_metrics_file = os.path.join(
+      hparams.checkpoint_dir, 'supervised_loss.txt')
   for epoch_number in range(FLAGS.num_epochs):
     metrics_record = wavefunction_optimizer.run_optimization_epoch(
         train_ops, session, hparams, epoch_number)

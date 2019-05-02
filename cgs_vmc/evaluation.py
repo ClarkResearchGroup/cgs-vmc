@@ -237,10 +237,10 @@ class VectorWavefunctionEvaluator(WavefunctionEvaluator):
           psi = session.run(wavefunction_value, feed_dict=feed_dict)
           config_ind = 0
           for i in range(0, batch_size):
-            out_file.write('{} {}\n'.format(psi[i].real, psi[i].imag))
+            out_file.write('({},{})\n'.format(psi[i].real, psi[i].imag))
     config_batch = config_batch * 2. - 1.
     feed_dict = {placeholder_input: config_batch}
     psi = session.run(wavefunction_value, feed_dict=feed_dict)
     for i in range(0, config_ind):
-      out_file.write('{} {}\n'.format(psi[i].real, psi[i].imag))
+      out_file.write('({},{})\n'.format(psi[i].real, psi[i].imag))
     out_file.close()

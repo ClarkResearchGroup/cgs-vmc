@@ -83,7 +83,7 @@ def build_normalization_ops(
 
 
 def run_normalization_ops(
-    max_value: Any,
+    max_value: np.float,
     mc_step: tf.Tensor,
     wavefunction: wavefunctions.Wavefunction,
     session: tf.Session,
