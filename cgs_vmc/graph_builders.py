@@ -38,21 +38,22 @@ def get_or_create_num_epochs() -> tf.Tensor:
 def build_monte_carlo_sampling(
     inputs: tf.Tensor,
     wavefunction: wavefunctions.Wavefunction,
-    psi: tf.Tensor = None
+    psi_amplitude: tf.Tensor = None,
 ) -> Tuple[tf.Tensor, tf.Tensor]:
   """Connects operations that perform MCMC sampling in `inupts` to the graph.
 
   Args:
     inputs: Variable holding sampled system configurations.
     wavefunction: Wavefunction object to use for important sampling.
-    psi: Tensor representing wavefunction(inputs), or None.
+    psi_amplitude: Tensor representing amplitude of wavefunction(inputs),
+        or None.
 
   Returns:
     A tuple of tensors representing operation for updating inputs and evaluating
     acceptance ratio.
   """
-  if psi is None:
-    psi = wavefunction(inputs)
+  if psi_amplitude is None:
+    psi_amplitude, _ = wavefunction(inputs)
 
   batch_size = inputs.get_shape().as_list()[0]
 
@@ -71,12 +72,15 @@ def build_monte_carlo_sampling(
       up_spins, -2 * np.ones(batch_size, dtype=np.float32), inputs.shape)
 
   updated_config = tf.add_n([inputs, spin_down_update, spin_up_update])
-  new_config_psi = wavefunction(updated_config)
-  ratios = tf.abs(new_config_psi) / tf.abs(psi)
+  new_config_psi_amplitude, _ = wavefunction(updated_config)
+  #ratios = tf.exp(new_config_psi_amplitude - psi_amplitude)
+  log_ratios = new_config_psi_amplitude - psi_amplitude
   metropolis_rnd = tf.sqrt(
       tf.random_uniform(shape=(batch_size,), dtype=tf.float32))
+  log_metropolis_rnd = tf.log(metropolis_rnd)
 
-  updates_mask = tf.cast(tf.greater(ratios, metropolis_rnd), tf.float32)
+  #updates_mask = tf.cast(tf.greater(ratios, metropolis_rnd), tf.float32)
+  updates_mask = tf.cast(tf.greater(log_ratios, log_metropolis_rnd), tf.float32)
 
   accepted_spin_down_update = tf.scatter_nd(
       down_spins, 2 * updates_mask * np.ones(batch_size), inputs.shape)
