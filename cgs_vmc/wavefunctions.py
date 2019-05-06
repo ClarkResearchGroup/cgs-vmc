@@ -168,6 +168,31 @@ class FullyConnectedNetwork(Wavefunction):
       fcnn_params['name'] = name
     return cls(**fcnn_params)
 
+
+def build_wavefunction(
+    hparams: tf.contrib.training.HParams,
+) -> 'Wavefunction':
+  """Returns a Wavefunction object based on the requested type and hparams.
+
+  Creates a Wavefunction instance corresponding to `wavefunction_type` and uses
+  parameters from hparams to initialize it.
+
+  Args:
+    hparams: Class holding hyperparameters of the wavefunction ansatzs.
+
+  Returns:
+    A Wavefunction instance corresponding to `wavefunction_type`.
+
+  Raises:
+    ValueError: Provided `wavefunction_type` is not registered.
+  """
+  wavefunction_type = hparams.wavefunction_type
+  if wavefunction_type in WAVEFUNCTION_TYPES:
+    return WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams)
+
+  raise ValueError('Provided wavefunction_type is not registered.')
+
+
 WAVEFUNCTION_TYPES = {
     'fully_connected': FullyConnectedNetwork,
 }
