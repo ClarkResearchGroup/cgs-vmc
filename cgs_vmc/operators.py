@@ -46,7 +46,7 @@ class Operator():
       inputs: tf.Tensor,
       psi_amplitude: tf.Tensor = None,
       psi_angle: tf.Tensor = None,
-  ) -> tf.Tensor:
+  ) -> (tf.Tensor, tf.Tensor):
     """Adds tensor holding local values of the operator to the graph.
 
     In Monte Carlo evaluation expectation values is given by sum_{R} O_local(R),
