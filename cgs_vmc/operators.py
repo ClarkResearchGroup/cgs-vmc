@@ -25,7 +25,6 @@ class Operator():
       inputs: tf.Tensor,
       psi_amplitude: tf.Tensor = None,
       psi_angle: tf.Tensor = None,
-      # QA
   ) -> Tuple[tf.Tensor, ...]:
     """Connects components evaluating O|psi> to the graph.
 
@@ -65,73 +64,6 @@ class Operator():
     """
     raise NotImplementedError
 
-  def apply_in_place(
-      self,
-      wavefunction: wavefunctions.Wavefunction,
-      inputs: tf.Tensor,
-      psi_amplitude: tf.Tensor = None,
-      psi_angle: tf.Tensor = None,
-  ) -> tf.Tensor:
-    """Returns a tensor holding values of <`inputs`|O|`wavefunction`>.
-
-    Args:
-      wavefunction:
-      inputs:
-      psi_amplitude:
-      psi_angle:
-
-    Returns:
-      Tensor holding values of the wavefunction after application of the
-      operator.
-    """
-    raise NotImplementedError
-
-  def apply(
-      self,
-      wavefunction: wavefunctions.Wavefunction
-  ) -> wavefunctions.Wavefunction:
-    """Returns new wavefunction that is equal to O|`wavefunction`>."""
-    raise NotImplementedError
-
-# QA
-class TransformedWavefunction(wavefunctions.Wavefunction):
-  """Class representing wavefunction after application of the operator.
-
-  # TODO(kochkov92) Add description of how this works.
-  """
-
-  def __init__(
-      self,
-      build_function: Callable,
-      operator: Operator,
-      wavefunction: wavefunctions.Wavefunction,
-      name: str = 'transformed_wavefunction'
-  ):
-    """Creates an WavefunctionSum module."""
-    # TODO(kochkov92) change the naming to reflect the application of O.
-    super(TransformedWavefunction, self).__init__(name=name)
-    # TODO
-    self.build_function = build_function
-    self._wf = wavefunction
-    self._operator = operator
-    self._sub_wavefunctions.append(wavefunction)
-
-  def _build(self, inputs: tf.Tensor) -> tf.Tensor:
-    """Builds computational graph evaluating the wavefunction on inputs.
-
-    Args:
-      inputs: Input tensor, must have shape (batch, num_sites, ...).
-
-    Returns:
-      Tensor representing wave-function amplitudes evaluated on `inputs`.
-    """
-    return self.build_function(self._operator, self._wf, inputs)
-
-  @classmethod
-  def from_hparams(cls, hparams: tf.contrib.training.HParams):
-    """Constructs an instance of a class from hparams."""
-    raise ValueError('Hparams initialization is not supported for this class.')
-
 
 class HeisenbergBond(Operator):
   """Implements S_{i}S_{j} operator."""
@@ -157,7 +89,8 @@ class HeisenbergBond(Operator):
       inputs: Input <R| on which terms are evaluated.
 
     Returns:
-      Tuple containing SzSz matrix element and SxySxy term.
+      Tuple containing SzSz matrix element and SxySxy term of
+      amplitude and angle.
     """
     batch_size = inputs.get_shape().as_list()[0]
     i, j = self._bond
@@ -173,11 +106,17 @@ class HeisenbergBond(Operator):
     # updated config is the configuration after SxSx
     updated_config = tf.add_n([inputs, spin_i_update, spin_j_update])
     sz_matrix_element = tf.multiply(i_spins, j_spins)
-    # mask is to check whether SxSx is applicable or not
+    # mask is to check whether SxySxy is applicable or not
     mask = tf.less(sz_matrix_element, np.zeros(batch_size))
     mask = tf.cast(mask, sz_matrix_element.dtype)
-    s_perp_term = 2. * tf.multiply(mask, wavefunction(updated_config))
-    return  0.25 * self._j_z * sz_matrix_element, 0.25 * self._j_x * s_perp_term
+    # QA: factor[1] has an extra 2 factor!
+    factor = tf.constant([0.25 * self._j_z, 0.25 * self._j_x * 2])
+    s_perp_amplitude, s_perp_angle = wavefunction(updated_config)
+    # QA: whether it is better to use scatter_nd
+    # QA: not necessary, but more convenient to get max later
+    s_perp_amplitude = tf.multiply(mask, s_perp_amplitude)
+    s_perp_angle = tf.multiply(mask, s_perp_angle)
+    return sz_matrix_element, s_perp_amplitude, s_perp_angle, factor, mask
 
   def local_value(
       self,
@@ -185,44 +124,19 @@ class HeisenbergBond(Operator):
       inputs: tf.Tensor,
       psi_amplitude: tf.Tensor = None,
       psi_angle: tf.Tensor = None,
-  ) -> tf.Tensor:
+  ) -> (tf.Tensor, tf.Tensor):
     """Adds operations that compute S_{i}S_{j}_local."""
     if psi_amplitude is None and psi_angle is  None:
       psi_amplitude, psi_angle = wavefunction(inputs)
-    sz_matrix_element, s_perp_term = self.build(wavefunction, inputs)
-    # QA
-    return sz_matrix_element + s_perp_term / psi
-
-  def apply_in_place(
-      self,
-      wavefunction: wavefunctions.Wavefunction,
-      inputs: tf.Tensor,
-      psi_amplitude: tf.Tensor = None,
-      psi_angle: tf.Tensor = None,
-  )-> tf.Tensor:
-    """Returns matrix element of the operator on `inputs`. See base class."""
-    if psi_amplitude is None and psi_angle is  None:
-      psi_amplitude, psi_angle = wavefunction(inputs)
-    sz_matrix_element, s_perp_term = self.build(wavefunction, inputs)
-    # QA
-    return sz_matrix_element * psi + s_perp_term
-
-  def apply(
-      self,
-      wavefunction: wavefunctions.Wavefunction
-  )-> wavefunctions.Wavefunction:
-    """Applies operator to a wavefunction."""
-
-    def build_function(
-        building_operator: Operator,
-        wavefunction: wavefunctions.Wavefunction,
-        inputs: tf.Tensor
-    ) -> tf.Tensor:
-      sz_element, s_perp_term = building_operator.build(wavefunction, inputs)
-    # QA
-      return sz_element * wavefunction(inputs) + s_perp_term
-
-    return TransformedWavefunction(build_function, self, wavefunction)
+    sz_matrix_element, s_perp_amplitude, s_perp_angle, factor, mask = self.build(wavefunction, inputs)
+    sz_matrix_element = factor[0] * sz_matrix_element
+    amplitude = s_perp_amplitude - psi_amplitude
+    angle = s_perp_angle - psi_angle
+    s_perp_real = tf.multiply(tf.exp(amplitude), tf.cos(angle))
+    s_perp_real = factor[1] * tf.multiply(mask, s_perp_real)
+    s_perp_img = tf.multiply(tf.exp(amplitude), tf.sin(angle))
+    s_perp_img = factor[1] * tf.multiply(mask, s_perp_img)
+    return (sz_matrix_element + s_perp_real, s_perp_img)
 
 
 class HeisenbergHamiltonian(Operator):
@@ -255,12 +169,31 @@ class HeisenbergHamiltonian(Operator):
       Tuple containing diagonal matrix element and SxySxy terms.
     """
     sz_elements = []
-    s_perp_terms = []
+    s_perp_amplitudes = []
+    s_perp_angles = []
+    masks_term = []
     for bond in self._heisenberg_bonds:
-      sz_element, s_perp_term = bond.build(wavefunction, inputs)
-      sz_elements.append(sz_element)
-      s_perp_terms.append(s_perp_term)
-    return tf.add_n(sz_elements), tf.add_n(s_perp_terms)
+      sz_term, amplitude, angle, factor, mask = bond.build(wavefunction, inputs)
+      sz_elements.append(sz_term)
+      s_perp_amplitudes.append(amplitude)
+      s_perp_angles.append(angle)
+      masks_term.append(mask)
+    s_perp_amplitudes = tf.convert_to_tensor(s_perp_amplitudes)
+    s_perp_angles = tf.convert_to_tensor(s_perp_angles)
+    masks_term = tf.convert_to_tensor(masks_term)
+
+    max_amplitude = tf.reduce_max(s_perp_amplitudes, axis=0)
+    amplitudes = s_perp_amplitudes - max_amplitude
+    amplitudes = tf.exp(tf.multiply(masks_term, amplitudes))
+    amplitudes_real = tf.multiply(amplitudes, tf.cos(s_perp_angles))
+    amplitudes_real = tf.reduce_sum(amplitudes_real, axis=0)
+    amplitudes_img = tf.multiply(amplitudes, tf.sin(s_perp_angles))
+    amplitudes_img = tf.reduce_sum(amplitudes_img, axis=0)
+    amplitudes_total = tf.complex(amplitudes_real, amplitudes_img)
+    amp = tf.log(tf.abs(amplitudes_total)) + max_amplitude
+    angle = tf.angle(amplitudes_total)
+
+    return tf.add_n(sz_elements), amp, angle, factor
 
   def local_value(
       self,
@@ -268,43 +201,21 @@ class HeisenbergHamiltonian(Operator):
       inputs: tf.Tensor,
       psi_amplitude: tf.Tensor = None,
       psi_angle: tf.Tensor = None,
-  ) -> tf.Tensor:
+  ) -> (tf.Tensor, tf.Tensor):
     """Adds operations that compute S_{i}S_{j}_local."""
     if psi_amplitude is None and psi_angle is  None:
       psi_amplitude, psi_angle = wavefunction(inputs)
-    diagonal, s_perp_term = self.build(wavefunction, inputs)
-    return diagonal + s_perp_term / psi
-
-  def apply_in_place(
-      self,
-      wavefunction: wavefunctions.Wavefunction,
-      inputs: tf.Tensor,
-      psi_amplitude: tf.Tensor = None,
-      psi_angle: tf.Tensor = None,
-  )-> tf.Tensor:
-    """Returns matrix element of the operator on `inputs`. See base class."""
-    if psi_amplitude is None and psi_angle is  None:
-      psi_amplitude, psi_angle = wavefunction(inputs)
-    diagonal, s_perp_term = self.build(wavefunction, inputs)
-    return diagonal * psi + s_perp_term
-
-  def apply(
-      self,
-      wavefunction: wavefunctions.Wavefunction
-  )-> wavefunctions.Wavefunction:
-    """Applies operator to a wavefunction."""
-
-    def build_function(
-        q_operator: Operator,
-        wavefunction: wavefunctions.Wavefunction,
-        inputs: tf.Tensor
-    ) -> tf.Tensor:
-      sz_matrix_element, s_perp_term = q_operator.build(wavefunction, inputs)
-      return wavefunction(inputs) * sz_matrix_element + s_perp_term
-
-    return TransformedWavefunction(build_function, self, wavefunction)
+    diagonal, amp, angle, factor = self.build(wavefunction, inputs)
+    diagonal = factor[0] * diagonal
+    amp = amp - psi_amplitude
+    angle = angle - psi_angle
+    amplitude_real = factor[1] * tf.multiply(tf.exp(amp), tf.cos(angle))
+    amplitude_img = factor[1] * tf.multiply(tf.exp(amp), tf.sin(angle))
+    return (diagonal + amplitude_real, amplitude_img)
 
 
+
+'''
 # test
 from test import *
 inputs = tf.constant(random_configurations(12, 6), dtype=tf.float32)
@@ -336,3 +247,4 @@ print('j_spin_index\n', sess.run(j_spin_index))
 print('updated_config\n', sess.run(updated_config))
 print('mask0\n', sess.run(mask0))
 print('mask\n', sess.run(mask))
+'''
