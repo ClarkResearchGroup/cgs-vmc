@@ -127,7 +127,8 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
     configs = graph_builders.get_configs(shared_resources, batch_size, n_sites)
     mc_step, acc_rate = graph_builders.get_monte_carlo_sampling(
         shared_resources, configs, wavefunction)
-    opt_v = wavefunction.get_trainable_variables()
+    #opt_v = wavefunction.get_trainable_variables()
+    amp_v, angle_v = wavefunction.get_trainable_sub_variables()
 
     psi_amplitude, psi_angle = wavefunction(configs)
     local_energy_real, local_energy_img = hamiltonian.local_value(
@@ -136,16 +137,16 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
     local_energy_img = tf.stop_gradient(local_energy_img)
 
     # QA: can we seperate amplitude and angle gradient
-    # QA: can we use psi_amplitude_grads to get e_psi_amplitude
-    psi_amplitude_raw_grads = tf.gradients(psi_amplitude, opt_v)
+    # TODO: use psi_amplitude_grads to get e_psi_amplitude
+    psi_amplitude_raw_grads = tf.gradients(psi_amplitude, amp_v)
     psi_amplitude_grads = [
         tf.convert_to_tensor(grad) for grad in psi_amplitude_raw_grads]
     e_psi_amplitude_raw_grads = tf.gradients(
-        psi_amplitude * local_energy_real, opt_v)
+        psi_amplitude * local_energy_real, amp_v)
     e_psi_amplitude_grads = [
         tf.convert_to_tensor(grad) for grad in e_psi_amplitude_raw_grads]
     e_psi_angle_raw_grads = tf.gradients(
-        psi_angle * local_energy_img, opt_v)
+        psi_angle * local_energy_img, angle_v)
     e_psi_angle_grads = [
         tf.convert_to_tensor(grad) for grad in e_psi_angle_raw_grads]
 
@@ -175,6 +176,7 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
         weighted_amplitude_grad + weighted_angle_grad - mean_energy * grad
         for grad, weighted_amplitude_grad, weighted_angle_grad in grad_pairs
     ]
+    opt_v = amp_v + angle_v
     grads_and_vars = list(zip(energy_gradients, opt_v))
     optimizer = create_sgd_optimizer(hparams)
     apply_gradients = optimizer.apply_gradients(grads_and_vars)
