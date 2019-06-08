@@ -43,7 +43,7 @@ class Wavefunction(snt.AbstractModule):
     super(Wavefunction, self).__init__(name=name)
     self._sub_wavefunctions = []
 
-  def _build(self, inputs: tf.Tensor) -> (tf.Tensor, tf.Tensor):
+  def _build(self, inputs: tf.Tensor) -> tf.Tensor:
     """Builds computational graph evaluating the wavefunction on inputs.
 
     Args:
@@ -114,90 +114,6 @@ class Wavefunction(snt.AbstractModule):
     for sub_wavefunction in self._sub_wavefunctions:
       trainable_variables.append(sub_wavefunction.get_trainable_variables())
     return trainable_variables
-
-  def add_exp_normalization(
-      self,
-      pre_exp_tensor: tf.Tensor,
-      initial_exp_norm_shift: np.float32 = -10.
-  ) -> tf.Tensor:
-    """Adds normalization constant to log of psi, prior to exponentiation.
-
-    Adds a constant non-trainable shift to the `pre_exp_tensor` that can be
-    adjusted throughout training to avoid overflows. This method will be
-    depricated once wavefunction interface is moved to log + phase.
-
-    Args:
-      pre_exp_tensor: Tensor of shape [batch_size] to be shifted before exp.
-      initial_exp_norm_shift: Initial value of the shift.
-
-    Returns:
-      Tensor with values `pre_exp_tensor` shifted by `exp_norm_shift`.
-    """
-    # TODO(kochkov92) Remove when move to log(psi) + phase(psi)
-    self._exp_norm_shift = tf.get_variable(
-        name='exp_norm_shift',
-        shape=[],
-        initializer=tf.constant_initializer(initial_exp_norm_shift),
-        dtype=tf.float32,
-        trainable=False
-    )
-    return pre_exp_tensor - self._exp_norm_shift
-
-  def normalize_batch(
-      self,
-      batch_of_amplitudes: tf.Tensor,
-      max_value: np.float32 = 1e10,
-  ) -> Any:
-    """If output_activation is tf.exp, builds operation that normalize psi.
-
-    Build an operation that changes the normalization variable such that
-    values of batch_of_amplitudes are mapped on (0, max_value) interval.
-    If mode does not use tf.exp as output activation, returns None.
-    Note that this procedure does not guarantee that arbitrary psi(inputs)
-    is <= max_value on all inputs. This method can be overriden by other
-    wavefunctions if needed.
-
-    Args:
-      batch_of_amplitudes: Batch of amplitudes.
-      max_value: Upper bound on batch of amplitudes.
-
-    Returns:
-      Operation that updates normalization or None if activation is not 'exp'.
-    """
-    if self._exp_norm_shift is None:
-      return None
-    max_amplitude_tensor = tf.reduce_max(batch_of_amplitudes)
-    log_max = tf.log(max_amplitude_tensor)
-    return tf.assign_add(self._exp_norm_shift, log_max - np.log(max_value))
-
-  def update_norm(
-      self,
-      batch_of_amplitudes: tf.Tensor,
-      max_value: np.float32 = 1e10,
-  ) -> Any:
-    """Builds operation that update wf values in batch not to exceed max_value.
-
-    Similar to normalize batch, returns None if output_activation of the model
-    is not tf.exp. In contrast to normalize_batch, this operation changes the
-    normalization only if the value of the amplitude in the batch exceeds
-    max_value.
-
-    Args:
-      batch_of_amplitudes: Batch of amplitudes.
-      max_value: Desired upper bound on batch of amplitudes.
-
-    Returns:
-      Operation that updates normalization variable.
-    """
-    if self._exp_norm_shift is None:
-      return None
-    max_log = np.log(max_value)
-    max_amplitude_tensor = tf.reduce_max(batch_of_amplitudes)
-    log_max = tf.log(max_amplitude_tensor)
-    update_norm = lambda: tf.assign_add(self._exp_norm_shift, log_max - max_log)
-    keep_norm = lambda: tf.assign_add(self._exp_norm_shift, 0.)
-    normalize = tf.cond(tf.greater(log_max, max_log), update_norm, keep_norm)
-    return normalize
 
   @classmethod
   def from_hparams(
@@ -276,7 +192,7 @@ class FullyConnectedNetwork(Wavefunction):
   def _build(
       self,
       inputs: tf.Tensor,
-  ) -> (tf.Tensor, tf.Tensor):
+  ) -> tf.Tensor:
     """Builds computational graph evaluating the wavefunction on inputs.
 
     Args:
