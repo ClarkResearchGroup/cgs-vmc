@@ -109,13 +109,12 @@ class HeisenbergBond(Operator):
     # mask is to check whether SxySxy is applicable or not
     mask = tf.less(sz_matrix_element, np.zeros(batch_size))
     mask = tf.cast(mask, sz_matrix_element.dtype)
-    # QA: factor[1] has an extra 2 factor!
+    # factor[1] has an extra 2 factor due to raisign operator
     factor = tf.constant([0.25 * self._j_z, 0.25 * self._j_x * 2])
     s_perp_amplitude, s_perp_angle = wavefunction(updated_config)
-    # QA: whether it is better to use scatter_nd
     # QA: not necessary, but more convenient to get max later
     s_perp_amplitude = tf.multiply(mask, s_perp_amplitude)
-    s_perp_angle = tf.multiply(mask, s_perp_angle)
+    #s_perp_angle = tf.multiply(mask, s_perp_angle)
     return sz_matrix_element, s_perp_amplitude, s_perp_angle, factor, mask
 
   def local_value(
@@ -178,13 +177,15 @@ class HeisenbergHamiltonian(Operator):
       s_perp_amplitudes.append(amplitude)
       s_perp_angles.append(angle)
       masks_term.append(mask)
+    sz_elements = tf.convert_to_tensor(sz_elements)
     s_perp_amplitudes = tf.convert_to_tensor(s_perp_amplitudes)
     s_perp_angles = tf.convert_to_tensor(s_perp_angles)
     masks_term = tf.convert_to_tensor(masks_term)
 
     max_amplitude = tf.reduce_max(s_perp_amplitudes, axis=0)
     amplitudes = s_perp_amplitudes - max_amplitude
-    amplitudes = tf.exp(tf.multiply(masks_term, amplitudes))
+    #amplitudes = tf.exp(tf.multiply(masks_term, amplitudes)
+    amplitudes = tf.multiply(masks_term, tf.exp(amplitudes))
     amplitudes_real = tf.multiply(amplitudes, tf.cos(s_perp_angles))
     amplitudes_real = tf.reduce_sum(amplitudes_real, axis=0)
     amplitudes_img = tf.multiply(amplitudes, tf.sin(s_perp_angles))
@@ -193,7 +194,7 @@ class HeisenbergHamiltonian(Operator):
     amp = tf.log(tf.abs(amplitudes_total)) + max_amplitude
     angle = tf.angle(amplitudes_total)
 
-    return tf.add_n(sz_elements), amp, angle, factor
+    return tf.reduce_sum(sz_elements, axis=0), amp, angle, factor
 
   def local_value(
       self,
@@ -212,7 +213,6 @@ class HeisenbergHamiltonian(Operator):
     amplitude_real = factor[1] * tf.multiply(tf.exp(amp), tf.cos(angle))
     amplitude_img = factor[1] * tf.multiply(tf.exp(amp), tf.sin(angle))
     return (diagonal + amplitude_real, amplitude_img)
-
 
 
 '''
