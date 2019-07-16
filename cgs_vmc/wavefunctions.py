@@ -43,7 +43,7 @@ class Wavefunction(snt.AbstractModule):
     super(Wavefunction, self).__init__(name=name)
     self._sub_wavefunctions = []
 
-  def _build(self, inputs: tf.Tensor) -> tf.Tensor:
+  def _build(self, inputs: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     """Builds computational graph evaluating the wavefunction on inputs.
 
     Args:
@@ -57,45 +57,6 @@ class Wavefunction(snt.AbstractModule):
     """
     raise NotImplementedError
 
-  def complex(self, other: 'Wavefunction') -> 'Wavefunction':
-    """Generates new wavefunction that equals to `self` + `other`."""
-
-    class ComplexWavefunctions(Wavefunction):
-      """Wavefunction wrapper of the ampltitude-angle representation of a complex wavefunction."""
-      def __init__(
-          self,
-          wf_a: Wavefunction,
-          wf_b: Wavefunction,
-          name: str = 'complex_wavefunctions'
-      ):
-        """Creates an WavefunctionSum module."""
-        # pylint: disable=protected-access
-        name = '_plus_'.join([wf_a._unique_name, wf_b._unique_name])
-        super(ComplexWavefunctions, self).__init__(name=name)
-        self._wf_a = wf_a
-        self._wf_b = wf_b
-        self._sub_wavefunctions += [self._wf_a, self._wf_b]
-
-      def _build(self, inputs: tf.Tensor) -> (tf.Tensor, tf.Tensor):
-        """Builds computational graph evaluating the wavefunction on inputs.
-
-        Args:
-          inputs: Input tensor, must have shape (batch, num_sites, ...).
-
-        Returns:
-          Tensor holding values of the wavefunction on `inputs`.
-
-        Raises:
-          ValueError: Input tensor has wrong shape.
-        """
-        return (self._wf_a(inputs), self._wf_b(inputs))
-
-      @classmethod
-      def from_hparams(cls, hparams: tf.contrib.training.HParams):
-        """Constructs an instance of a class from hparams."""
-        raise ValueError('Hparams initialization is not supported for sum.')
-
-    return ComplexWavefunctions(self, other)
 
   def get_trainable_variables(self):
     """Returns a list of trainable variables in this wavefunction."""
@@ -107,13 +68,6 @@ class Wavefunction(snt.AbstractModule):
       trainable_variables += sub_wavefunction.get_trainable_variables()
     return trainable_variables
 
-  def get_trainable_sub_variables(self):
-    """Returns a list of trainable variables in this wavefunction."""
-    trainable_variables = []
-    # pylint: disable=protected-access
-    for sub_wavefunction in self._sub_wavefunctions:
-      trainable_variables.append(sub_wavefunction.get_trainable_variables())
-    return trainable_variables
 
   @classmethod
   def from_hparams(
@@ -171,28 +125,15 @@ class FullyConnectedNetwork(Wavefunction):
     self._nonlinearity = nonlinearity
     self._output_activation = output_activation
     with self._enter_variable_scope():
-      #self._amplitude_components = []
-      #self._angle_components = []
-      #for _ in range(num_layers):
-      #  self._amplitude_components += [snt.Linear(output_size=layer_size), nonlinearity]
-      #  self._angle_components += [snt.Linear(output_size=layer_size), nonlinearity]
-      #self._amplitude_components += [snt.Linear(output_size=1), tf.squeeze]
-      #self._angle_components += [snt.Linear(output_size=1), tf.squeeze]
-      #self._amplitude_components += [output_activation]
-      #self._angle_components += [output_activation]
       self._components = []
       for _ in range(num_layers):
         self._components += [snt.Linear(output_size=layer_size), nonlinearity]
-      self._components += [snt.Linear(output_size=1), tf.squeeze]
-      if output_activation == tf.exp:
-        self._components += [self.add_exp_normalization, tf.exp]
-      else:
-        self._components += [output_activation]
+      self._components += [snt.Linear(output_size=2), tf.squeeze]
 
   def _build(
       self,
       inputs: tf.Tensor,
-  ) -> tf.Tensor:
+  ) -> (tf.Tensor, tf.Tensor):
     """Builds computational graph evaluating the wavefunction on inputs.
 
     Args:
@@ -205,11 +146,9 @@ class FullyConnectedNetwork(Wavefunction):
       ValueError: Input tensor has wrong shape.
     """
 
-    #amplitude_module = snt.Sequential(self._amplitude_components, name='amplitude')
-    #angle_module = snt.Sequential(self._angle_components, name='angle')
-    #return (amplitude_module(inputs), angle_module(inputs))
     module = snt.Sequential(self._components)
-    return module(inputs)
+    output = module(inputs)
+    return (tf.identity(output[:, 0]), tf.constant(np.pi)*tf.sigmoid(output[:, 1]))
 
   @classmethod
   def from_hparams(
@@ -250,23 +189,23 @@ def build_wavefunction(
   if wavefunction_type in WAVEFUNCTION_TYPES:
     return WAVEFUNCTION_TYPES[wavefunction_type].from_hparams(hparams)
 
-  if hparams.wavefunction_type in ('complex'):
-    wf_type_a, wf_type_b = hparams.composite_wavefunction_types
-    activation_a, activation_b = hparams.composite_output_activations
-    wf_a_hparams = copy.copy(hparams)
-    wf_b_hparams = copy.copy(hparams)
-    wf_a_hparams.set_hparam('output_activation', activation_a)
-    wf_a_hparams.set_hparam('wavefunction_type', wf_type_a)
-    wf_b_hparams.set_hparam('output_activation', activation_b)
-    wf_b_hparams.set_hparam('wavefunction_type', wf_type_b)
-    wf_a = WAVEFUNCTION_TYPES[wf_type_a].from_hparams(wf_a_hparams)
-    wf_b = WAVEFUNCTION_TYPES[wf_type_b].from_hparams(wf_b_hparams)
-    if hparams.wavefunction_type == 'complex':
-      return Wavefunction.complex(wf_a, wf_b)
-
   raise ValueError('Provided wavefunction_type is not registered.')
 
 
 WAVEFUNCTION_TYPES = {
     'fully_connected': FullyConnectedNetwork,
 }
+
+
+'''
+from test import *
+inputs = tf.constant(random_configurations(12, 6), dtype=tf.float32)
+a = FullyConnectedNetwork(2,10)
+output = a._build(inputs)
+
+init = tf.global_variables_initializer()
+sess = tf.Session()
+sess.run(init)
+print('input\n', sess.run(inputs))
+print('output\n', sess.run(output))
+'''

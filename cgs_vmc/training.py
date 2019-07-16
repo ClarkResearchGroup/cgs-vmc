@@ -36,8 +36,6 @@ TrainOpsTraditional = NamedTuple(
         ('epoch_increment', tf.Tensor),
         ('a_grad', tf.Tensor),
         ('p_grad', tf.Tensor),
-        ('amp_v', tf.Tensor),
-        ('phase_v', tf.Tensor),
         ('amplitude', tf.Tensor),
         ('phase', tf.Tensor),
         ('energy_gradients', tf.Tensor),
@@ -139,8 +137,7 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
     configs = graph_builders.get_configs(shared_resources, batch_size, n_sites)
     mc_step, acc_rate = graph_builders.get_monte_carlo_sampling(
         shared_resources, configs, wavefunction)
-    #opt_v = wavefunction.get_trainable_variables()
-    amp_v, phase_v = wavefunction.get_trainable_sub_variables()
+    opt_v = wavefunction.get_trainable_variables()
 
     psi_amplitude, psi_phase = wavefunction(configs)
     local_energy_real, local_energy_img = hamiltonian.local_value(
@@ -148,22 +145,22 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
     local_energy_real = tf.stop_gradient(local_energy_real)
     local_energy_img = tf.stop_gradient(local_energy_img)
 
-    # QA: can we seperate amplitude and phase gradient
-    # TODO: use psi_amplitude_grads to get e_psi_amplitude
-    psi_amplitude_raw_grads = tf.gradients(psi_amplitude, amp_v)
-    psi_phase_raw_grads = tf.gradients(psi_phase, phase_v)
+    psi_amplitude_raw_grads = tf.gradients(psi_amplitude, opt_v)
+    psi_phase_raw_grads = tf.gradients(psi_phase, opt_v)
     psi_amplitude_grads = [
         tf.convert_to_tensor(grad) for grad in psi_amplitude_raw_grads]
     psi_phase_grads = [
         tf.convert_to_tensor(grad) for grad in psi_phase_raw_grads]
     e_psi_amplitude_raw_grads = tf.gradients(
-        psi_amplitude * local_energy_real, amp_v)
+        psi_amplitude * local_energy_real, opt_v)
     e_psi_amplitude_grads = [
         tf.convert_to_tensor(grad) for grad in e_psi_amplitude_raw_grads]
+    #e_psi_amplitude_grads = tf.multiply(psi_amplitude_grads, local_energy_real)
     e_psi_phase_raw_grads = tf.gradients(
-        psi_phase * local_energy_img, phase_v)
+        psi_phase * local_energy_img, opt_v)
     e_psi_phase_grads = [
         tf.convert_to_tensor(grad) for grad in e_psi_phase_raw_grads]
+    #e_psi_phase_grads = tf.multiply(psi_phase_grads, local_energy_img)
 
     amplitude_grads = [
         tf.metrics.mean_tensor(grad) for grad in psi_amplitude_grads]
@@ -172,8 +169,9 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
     weighted_phase_grads = [
         tf.metrics.mean_tensor(grad) for grad in e_psi_phase_grads]
 
-    # QA: do we need to update local_energy_img as well
+
     mean_energy, update_energy = tf.metrics.mean(local_energy_real)
+    mean_energy_img, update_energy_img = tf.metrics.mean(local_energy_img)
     # QA: why need list(map)
     mean_amplitude_grads, update_amplitude_grads = list(
         map(list, zip(*amplitude_grads)))
@@ -191,18 +189,13 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
         weighted_amplitude_grad + weighted_phase_grad - mean_energy * grad
         for grad, weighted_amplitude_grad, weighted_phase_grad in grad_pairs
     ]
-    opt_v = amp_v + phase_v
     grads_and_vars = list(zip(energy_gradients, opt_v))
-    #grads_and_vars = list(zip(energy_gradients, amp_v))
-    #grads_and_vars2 = list(zip(energy_gradients, phase_v))
     optimizer = create_sgd_optimizer(hparams)
     apply_gradients = optimizer.apply_gradients(grads_and_vars)
-    #apply_gradients2 = optimizer.apply_gradients(grads_and_vars2)
     reset_gradients = tf.variables_initializer(tf.local_variables())
 
     all_updates = (
-        [update_energy,] + update_amplitude_grads
-        + update_weighted_amplitude_grads + update_weighted_phase_grads
+        [update_energy,] + update_amplitude_grads + update_weighted_amplitude_grads + update_weighted_phase_grads
         )
     accumulate_gradients = tf.group(all_updates)
 
@@ -219,8 +212,6 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
         epoch_increment=epoch_increment,
         a_grad=psi_amplitude_raw_grads,
         p_grad=psi_phase_raw_grads,
-        amp_v=amp_v,
-        phase_v=phase_v,
         amplitude=psi_amplitude,
         phase=psi_phase,
         energy_gradients=energy_gradients,
@@ -265,8 +256,6 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
     #acc_g = session.run(train_ops.accumulate_gradients)
     #a_grad = session.run(train_ops.a_grad)
     #p_grad = session.run(train_ops.p_grad)
-    #amp_v = session.run(train_ops.amp_v)
-    #phase_v = session.run(train_ops.phase_v)
     #amp = session.run(train_ops.amplitude)
     #phase = session.run(train_ops.phase)
     #amplitude_grads = session.run(train_ops.amplitude_grads)
@@ -280,8 +269,6 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
     #print('acc', acc_g)
     #print('a_grad', a_grad)
     #print('p_grad', p_grad)
-    #print('amp_v',amp_v)
-    #print('phase_v',phase_v)
     #print('amp',amp)
     #print('phase',phase)
     #print('amplitude_grads',amplitude_grads)
