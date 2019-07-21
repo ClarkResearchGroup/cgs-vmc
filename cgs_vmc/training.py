@@ -147,20 +147,20 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
 
     psi_amplitude_raw_grads = tf.gradients(psi_amplitude, opt_v)
     psi_phase_raw_grads = tf.gradients(psi_phase, opt_v)
-    psi_amplitude_grads = [
-        tf.convert_to_tensor(grad) for grad in psi_amplitude_raw_grads]
-    psi_phase_grads = [
-        tf.convert_to_tensor(grad) for grad in psi_phase_raw_grads]
+
+    #psi_amplitude_grads = [
+    #    tf.convert_to_tensor(grad) for grad in psi_amplitude_raw_grads]
+    #psi_phase_grads = [
+    #    tf.convert_to_tensor(grad) for grad in psi_phase_raw_grads]
     e_psi_amplitude_raw_grads = tf.gradients(
         psi_amplitude * local_energy_real, opt_v)
-    e_psi_amplitude_grads = [
-        tf.convert_to_tensor(grad) for grad in e_psi_amplitude_raw_grads]
-    #e_psi_amplitude_grads = tf.multiply(psi_amplitude_grads, local_energy_real)
+    #e_psi_amplitude_grads = [
+    #    tf.convert_to_tensor(grad) for grad in e_psi_amplitude_raw_grads]
     e_psi_phase_raw_grads = tf.gradients(
         psi_phase * local_energy_img, opt_v)
-    e_psi_phase_grads = [
-        tf.convert_to_tensor(grad) for grad in e_psi_phase_raw_grads]
-    #e_psi_phase_grads = tf.multiply(psi_phase_grads, local_energy_img)
+    #e_psi_phase_grads = [
+    #    tf.convert_to_tensor(grad) for grad in e_psi_phase_raw_grads]
+
 
     amplitude_grads = [
         tf.metrics.mean_tensor(grad) for grad in psi_amplitude_grads]
@@ -284,3 +284,125 @@ class EnergyGradientOptimizer(WavefunctionOptimizer):
 GROUND_STATE_OPTIMIZERS = {
     'EnergyGradient': EnergyGradientOptimizer,
 }
+
+
+
+import operators
+import utils
+from test import *
+
+hparams = utils.create_hparams()
+hparams.set_hparam('wavefunction_type', 'fully_connected')
+hparams.set_hparam('num_sites', 10)
+hparams.set_hparam('batch_size', 6)
+
+
+
+n_sites = hparams.num_sites
+heisenberg_jx = 1.0
+heisenberg_bonds = [(i, (i + 1) % n_sites) for i in range(0, n_sites)]
+
+wavefunction = wavefunctions.build_wavefunction(hparams)
+hamiltonian = operators.HeisenbergHamiltonian(heisenberg_bonds,
+                                              heisenberg_jx, 1.)
+
+wavefunction_optimizer = GROUND_STATE_OPTIMIZERS['EnergyGradient']()
+
+# TODO(dkochkov) change the pipeline to avoid adding elements to dictionary
+shared_resources = {}
+
+graph_building_args = {
+    'wavefunction': wavefunction,
+    'hamiltonian': hamiltonian,
+    'hparams': hparams,
+    'shared_resources': shared_resources
+}
+
+batch_size = hparams.batch_size
+n_sites = hparams.num_sites
+
+configs = graph_builders.get_configs(shared_resources, batch_size, n_sites)
+mc_step, acc_rate = graph_builders.get_monte_carlo_sampling(
+    shared_resources, configs, wavefunction)
+#opt_v = wavefunction.get_trainable_variables()
+opt_v = wavefunction.trainable_weights
+
+with tf.GradientTape(persistent=True) as t:
+  t.watch(opt_v)
+  psi_amplitude, psi_phase = wavefunction(configs)
+  local_energy_real, local_energy_img = hamiltonian.local_value(wavefunction, configs, psi_amplitude, psi_phase)
+  amplitude_mean = tf.reduce_mean(psi_amplitude)
+  phase_mean = tf.reduce_mean(psi_phase)
+
+tmp = opt_v.copy()
+amplitude_grads = t.gradient(amplitude_mean, opt_v)
+phase_grads = t.gradient(phase_mean, opt_v)
+
+
+
+optimizer = tf.keras.optimizers.Adam(lr=0.0001, beta_1=0.9, beta_2=0.98, epsilon=1e-9)
+optimizer.apply_gradients(zip(amplitude_grads, wavefunction.trainable_variables))
+
+assert False, 'stop'
+
+local_energy_real = tf.stop_gradient(local_energy_real)
+local_energy_img = tf.stop_gradient(local_energy_img)
+psi_amplitude_raw_grads = tf.gradients(psi_amplitude, opt_v)
+psi_phase_raw_grads = tf.gradients(psi_phase, opt_v)
+
+#init = tf.global_variables_initializer()
+#sess = tf.Session()
+#sess.run(init)
+
+#psi_amplitude_grads = [
+#    tf.convert_to_tensor(grad) for grad in psi_amplitude_raw_grads]
+#psi_phase_grads = [
+#    tf.convert_to_tensor(grad) for grad in psi_phase_raw_grads]
+e_psi_amplitude_raw_grads = tf.gradients(
+    psi_amplitude * local_energy_real, opt_v)
+#e_psi_amplitude_grads = [
+#    tf.convert_to_tensor(grad) for grad in e_psi_amplitude_raw_grads]
+e_psi_phase_raw_grads = tf.gradients(
+    psi_phase * local_energy_img, opt_v)
+#e_psi_phase_grads = [
+#    tf.convert_to_tensor(grad) for grad in e_psi_phase_raw_grads]
+
+
+amplitude_grads = [
+    tf.metrics.mean_tensor(grad) for grad in psi_amplitude_grads]
+weighted_amplitude_grads = [
+    tf.metrics.mean_tensor(grad) for grad in e_psi_amplitude_grads]
+weighted_phase_grads = [
+    tf.metrics.mean_tensor(grad) for grad in e_psi_phase_grads]
+
+
+mean_energy, update_energy = tf.metrics.mean(local_energy_real)
+mean_energy_img, update_energy_img = tf.metrics.mean(local_energy_img)
+mean_amplitude_grads, update_amplitude_grads = list(
+    map(list, zip(*amplitude_grads)))
+mean_weighted_amplitude_grads, update_weighted_amplitude_grads = list(
+    map(list, zip(*weighted_amplitude_grads)))
+mean_weighted_phase_grads, update_weighted_phase_grads = list(
+    map(list, zip(*weighted_phase_grads)))
+
+grad_pairs = zip(
+    mean_amplitude_grads, mean_weighted_amplitude_grads,
+    mean_weighted_phase_grads
+)
+
+energy_gradients = [
+    weighted_amplitude_grad + weighted_phase_grad - mean_energy * grad
+    for grad, weighted_amplitude_grad, weighted_phase_grad in grad_pairs
+]
+grads_and_vars = list(zip(energy_gradients, opt_v))
+optimizer = create_sgd_optimizer(hparams)
+apply_gradients = optimizer.apply_gradients(grads_and_vars)
+reset_gradients = tf.variables_initializer(tf.local_variables())
+
+all_updates = (
+    [update_energy,] + update_amplitude_grads + update_weighted_amplitude_grads + update_weighted_phase_grads
+    )
+accumulate_gradients = tf.group(all_updates)
+
+num_epochs = graph_builders.get_or_create_num_epochs()
+epoch_increment = tf.assign_add(num_epochs, 1)

@@ -17,6 +17,7 @@ import training
 import wavefunctions
 import utils
 
+
 # System parameters
 flags.DEFINE_string(
     'checkpoint_dir', '',
@@ -126,6 +127,7 @@ def main(argv):
       'hparams': hparams,
       'shared_resources': shared_resources
   }
+
 
   train_ops = wavefunction_optimizer.build_opt_ops(**graph_building_args)
 

@@ -4,6 +4,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tensorflow as tf
+
 import copy
 import functools
 import inspect
@@ -12,38 +14,18 @@ from typing import Dict, List, Any
 
 import os
 import numpy as np
-import tensorflow as tf
-import sonnet as snt
-
+import tensorflow.keras as keras
 import layers
 
 
-class Wavefunction(snt.AbstractModule):
-  """Defines wavefunction interface.
 
-  Wavefunction class is an abstraction that decouples training and evaluation
-  procedures from the internal structure of the model. Every wavefunction
-  instance must implement `_build` method, that adds wavefunction evaluation
-  to the graph.
+class Wavefunction(keras.Model):
 
-  Base class provides generic methods applicable to all wavefunctions. If
-  generic implementation is not applicable to a particular instance, these
-  methods can be overwritten by the subclass. The construction is based on
-  the Abstract module in the Sonnet framework. To make variable sharing and
-  name_spaces work properly every instance must call super() with a `name`
-  argument. For more details see https://deepmind.github.io/sonnet/.
-
-  For current implementation of deep_copy for every argument in the constructor
-  a corresponding variable with an underscore must be added to the class. For
-  proper variable transfer, all wavefunction components should be added to list
-  `_sub_wavefunctions` after calling super.
-  """
   def __init__(self, name: str = 'wavefunction'):
     """Creates a Wavefunction instance"""
     super(Wavefunction, self).__init__(name=name)
-    self._sub_wavefunctions = []
 
-  def _build(self, inputs: tf.Tensor) -> (tf.Tensor, tf.Tensor):
+  def call(self, inputs: tf.Tensor) -> (tf.Tensor, tf.Tensor):
     """Builds computational graph evaluating the wavefunction on inputs.
 
     Args:
@@ -60,12 +42,10 @@ class Wavefunction(snt.AbstractModule):
 
   def get_trainable_variables(self):
     """Returns a list of trainable variables in this wavefunction."""
-    trainable_variables = []
-    # pylint: disable=protected-access
-    trainable_variables += tf.get_collection(
-        tf.GraphKeys.TRAINABLE_VARIABLES, scope=self._unique_name + '/')
-    for sub_wavefunction in self._sub_wavefunctions:
-      trainable_variables += sub_wavefunction.get_trainable_variables()
+    #trainable_variables = []
+    ## pylint: disable=protected-access
+    #trainable_variables += self.get_weights()
+    trainable_variables = self.get_weights()
     return trainable_variables
 
 
@@ -78,33 +58,6 @@ class Wavefunction(snt.AbstractModule):
     """Constructs an instance of a class from hparams."""
     raise NotImplementedError
 
-
-def module_transfer_ops(
-    source_module: Wavefunction,
-    target_module: Wavefunction,
-) -> tf.Tensor:
-  """Builds operations that copy variables values from source to target.
-
-  Args:
-    source_module: Wavefunction whose variables are being copied to target.
-    target_module: Wavefunction whose variables are assigned. Must be a deep
-        copy of source_module.
-
-  Returns:
-    A Tensor operation that assigns all variables of target to be equal to
-    those of source.
-
-  Raises:
-    ValueError: `target_module` is does not have the same structure as srouce.
-  """
-  source_variables = source_module.get_trainable_variables()
-  target_variables = target_module.get_trainable_variables()
-  assign_ops = []
-  for source_var, target_var in zip(source_variables, target_variables):
-    assign_ops.append(tf.assign(target_var, source_var))
-  if hasattr(target_module, 'norm'):
-    assign_ops.append(tf.assign(target_module.norm, source_module.norm))
-  return tf.group(*assign_ops)
 
 
 class FullyConnectedNetwork(Wavefunction):
@@ -124,13 +77,16 @@ class FullyConnectedNetwork(Wavefunction):
     self._layer_size = layer_size
     self._nonlinearity = nonlinearity
     self._output_activation = output_activation
-    with self._enter_variable_scope():
-      self._components = []
-      for _ in range(num_layers):
-        self._components += [snt.Linear(output_size=layer_size), nonlinearity]
-      self._components += [snt.Linear(output_size=2), tf.squeeze]
 
-  def _build(
+    #with self._enter_variable_scope():
+    self._components = []
+    for _ in range(num_layers):
+      self._components += [keras.layers.Dense(units=layer_size, activation=nonlinearity)]
+
+    self._amplitude = keras.layers.Dense(1, activation=tf.identity)
+    self._angle = keras.layers.Dense(1, activation='sigmoid')
+
+  def call(
       self,
       inputs: tf.Tensor,
   ) -> (tf.Tensor, tf.Tensor):
@@ -145,10 +101,20 @@ class FullyConnectedNetwork(Wavefunction):
     Raises:
       ValueError: Input tensor has wrong shape.
     """
+    #wf_input = keras.Input(shape=inputs.shape)
+    #x = self._components[0](wf_input)
+    x = self._components[0](inputs)
+    for i in range(len(self._components)-1):
+      x = self._components[i+1](x)
+    amplitude = tf.squeeze(self._amplitude(x))
+    angle = tf.squeeze(np.pi*self._angle(x))
 
-    module = snt.Sequential(self._components)
-    output = module(inputs)
-    return (tf.identity(output[:, 0]), tf.constant(np.pi)*tf.sigmoid(output[:, 1]))
+    #self._model = keras.Model(inputs=wf_input, outputs=[amplitude, angle])
+
+    #return self._model(inputs)
+    return [amplitude, angle]
+
+
 
   @classmethod
   def from_hparams(
@@ -197,15 +163,3 @@ WAVEFUNCTION_TYPES = {
 }
 
 
-'''
-from test import *
-inputs = tf.constant(random_configurations(12, 6), dtype=tf.float32)
-a = FullyConnectedNetwork(2,10)
-output = a._build(inputs)
-
-init = tf.global_variables_initializer()
-sess = tf.Session()
-sess.run(init)
-print('input\n', sess.run(inputs))
-print('output\n', sess.run(output))
-'''
